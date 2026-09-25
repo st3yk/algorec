@@ -1,7 +1,9 @@
 import itertools
 import random
+from types import SimpleNamespace
 
 import pytest
+from scipy.optimize import milp
 
 from steerrec.assembler import SLACK_TOL, ShortfallKind, assemble
 from steerrec.items import Item
@@ -226,6 +228,63 @@ def test_default_time_limit_solves_a_300_item_pool_to_optimality():
     page = assemble(cat.items, single_slider(0.5), DEFAULT_REGISTRY, P)
     assert not page.hit_time_limit and not page.used_fallback
     assert sum(it.p for it in page.items) / P > 0.84
+
+
+class ScriptedSolver:
+    """Runs the real milp but can rewrite a stage's result, to exercise limit/failure paths."""
+
+    def __init__(self, script):
+        self.script = script  # stage index -> "limit_with_incumbent" | "limit_no_incumbent" | "raise"
+        self.calls = 0
+
+    def __call__(self, *args, **kwargs):
+        stage, self.calls = self.calls, self.calls + 1
+        action = self.script.get(stage)
+        if action == "raise":
+            raise RuntimeError("boom")
+        res = milp(*args, **kwargs)
+        if action == "limit_with_incumbent":
+            return SimpleNamespace(status=1, x=res.x, success=False)
+        if action == "limit_no_incumbent":
+            return SimpleNamespace(status=1, x=None, success=False)
+        return res
+
+
+def easy_pool():
+    light = [Item(f"l{i}", f"cl{i}", 0.9 - i * 0.01, q={EDUCATIONAL: 0.0, LIGHT: 0.9}) for i in range(10)]
+    edu = [Item(f"e{i}", f"ce{i}", 0.5 - i * 0.01, q={EDUCATIONAL: 1.0, LIGHT: 0.0}) for i in range(10)]
+    return light + edu
+
+
+@pytest.mark.parametrize("stage", [0, 1, 2])
+def test_stage_hitting_limit_with_incumbent_uses_it_and_reports(stage):
+    page = assemble(easy_pool(), single_slider(1.0), DEFAULT_REGISTRY, P, solver=ScriptedSolver({stage: "limit_with_incumbent"}))
+    assert page.hit_time_limit and not page.used_fallback
+    assert page.shortfalls == []
+
+
+def test_stage0_limit_without_incumbent_falls_back_to_greedy():
+    page = assemble(easy_pool(), single_slider(1.0), DEFAULT_REGISTRY, P, solver=ScriptedSolver({0: "limit_no_incumbent"}))
+    assert page.hit_time_limit and page.used_fallback
+
+
+@pytest.mark.parametrize("action", ["limit_no_incumbent", "raise"])
+def test_stage1_failure_keeps_the_stage0_page_instead_of_greedy(action):
+    page = assemble(easy_pool(), single_slider(1.0), DEFAULT_REGISTRY, P, solver=ScriptedSolver({1: action}))
+    assert not page.used_fallback
+    assert page.shortfalls == []  # stage 0's page is slack-minimal, so it still meets the bounds
+
+
+def test_budget_is_shared_across_stages():
+    calls = []
+
+    def spy(*args, **kwargs):
+        calls.append(kwargs["options"]["time_limit"])
+        return milp(*args, **kwargs)
+
+    assemble(easy_pool(), single_slider(1.0), DEFAULT_REGISTRY, P, time_limit_s=1.0, solver=spy)
+    assert len(calls) == 3
+    assert calls[0] <= 1.0 and calls[1] < calls[0] and calls[2] < calls[1]
 
 
 # --- fallback ----------------------------------------------------------------------

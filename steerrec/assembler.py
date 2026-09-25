@@ -12,7 +12,9 @@ If the solver fails, a swap-greedy fallback builds the page instead. Either way,
 any unmet bound is returned as a Shortfall, never silently dropped.
 """
 
+import logging
 import math
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Mapping, Optional, Sequence
@@ -26,6 +28,7 @@ from steerrec.registry import Registry
 from steerrec.targets import Bound, BoundKind, compute_bounds, dedupe_pool, unsteered_page
 
 SLACK_TOL = 1e-6
+log = logging.getLogger(__name__)
 
 
 class ShortfallKind(Enum):
@@ -47,7 +50,7 @@ class Page:
     bounds: list[Bound]
     shortfalls: list[Shortfall] = field(default_factory=list)
     used_fallback: bool = False
-    hit_time_limit: bool = False            # a solver stage stopped early; the page may be suboptimal
+    hit_time_limit: bool = False            # the solve ran out of time; the page may be suboptimal
 
     @property
     def steered_ids(self) -> set[str]:
@@ -71,11 +74,14 @@ def assemble(
 ) -> Page:
     """Build one steered page from `pool` (plan Steps 13-17).
 
-    `time_limit_s` applies per solver stage. The plan's 50 ms assumed each stage
-    takes "a few ms"; measured on a 300-item pool, stages take ~20-150 ms, and a
-    50 ms cap returned noticeably worse incumbents (see the build log). This slice
-    has no latency budget, so the default favors optimal pages; `hit_time_limit`
-    reports when a stage stopped early anyway.
+    `time_limit_s` is one wall-clock budget for all solver stages together. Each
+    stage gets whatever is left. If a stage runs out of time or fails, the page
+    from the previous stage is used (still slack-minimal after stage 0); only a
+    stage-0 failure falls back to the greedy page. The plan's 50 ms assumed stages
+    take "a few ms"; measured on a 300-item pool they take ~20-150 ms, and a
+    50 ms cap gave noticeably worse pages (see the build log). This slice has no
+    latency budget, so the default favors optimal pages; `hit_time_limit` reports
+    any early stop.
     """
     pool = dedupe_pool(pool)
     for item in pool:
@@ -86,11 +92,7 @@ def assemble(
     if not bounds:  # s = 0 everywhere: the page is exactly U0.
         return Page(items=list(u0), unsteered=u0, bounds=[], shortfalls=_shortfalls(u0, bounds, page_size))
 
-    chosen, hit_limit = None, False
-    try:
-        chosen, hit_limit = _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver)
-    except Exception:  # noqa: BLE001 — any solver failure falls back; the page must still be served
-        chosen = None
+    chosen, hit_limit = _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver)
     used_fallback = chosen is None
     if used_fallback:
         chosen = _swap_greedy(pool, u0, bounds, registry, page_size)
@@ -110,8 +112,8 @@ def assemble(
 
 
 def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -> tuple[Optional[list[Item]], bool]:
-    """Stages 0-2. Returns (chosen items or None if the solver gives no usable answer,
-    whether any stage stopped at its time limit).
+    """Stages 0-2. Returns (chosen items, or None if stage 0 gives no usable answer;
+    whether the solve ran out of time).
 
     Variables: x_i (binary, one per pool item), then one slack per bound, then
     the cardinality slack. Every stage shares the same constraints, so x = 0
@@ -156,26 +158,38 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -
             row[idxs] = 1
             add(row, -np.inf, 1)
 
-    options = {"time_limit": time_limit_s}
+    deadline = time.perf_counter() + time_limit_s
     limited = False
 
     def run(objective, extra_rows=(), extra_lo=(), extra_hi=(), ub=None):
+        """One solver stage. Returns x, or None if out of time or the solver failed."""
+        nonlocal limited
+        remaining = deadline - time.perf_counter()
+        if remaining <= 0:
+            limited = True
+            return None
         A = np.vstack(rows + list(extra_rows))
         vb = var_bounds if ub is None else VarBounds(np.zeros(nvar), ub)
-        res = solver(
-            objective,
-            integrality=integrality,
-            bounds=vb,
-            constraints=[LinearConstraint(A, lo + list(extra_lo), hi + list(extra_hi))],
-            options=options,
-        )
-        # status 0 = optimal; 1 = limit reached, still usable if an incumbent exists.
+        try:
+            res = solver(
+                objective,
+                integrality=integrality,
+                bounds=vb,
+                constraints=[LinearConstraint(A, lo + list(extra_lo), hi + list(extra_hi))],
+                options={"time_limit": remaining},
+            )
+        except Exception:  # noqa: BLE001 - only the solver call is guarded; model-building bugs still raise
+            log.warning("milp stage failed; using the previous stage's page", exc_info=True)
+            return None
+        # status 0 = optimal; 1 = limit reached, usable only if an incumbent exists.
+        if res.status == 1:
+            limited = True
         if getattr(res, "x", None) is None or res.status not in (0, 1):
             return None
-        if res.status == 1:
-            nonlocal limited
-            limited = True
         return np.asarray(res.x)
+
+    def page_of(x):
+        return [it for it, xi in zip(pool, _binary(x[:n])) if xi]
 
     # Stage 0: minimize weighted slack. Cardinality outweighs every bound combined
     # (one item moves each bound's mass by at most 1), so the page is always filled first.
@@ -194,22 +208,20 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -
     c1[:n] = -p
     x1 = run(c1, ub=slack_cap)
     if x1 is None:
-        return None, limited
+        return page_of(x0), limited
     r1 = float(p @ _binary(x1[:n]))
 
     # Stage 2: prefer clear examples of pushed-up dimensions, losing at most delta of R1.
     pushed_up = bounds[0].pushed_up
-    x2 = x1
-    if pushed_up:
-        clarity = np.array([sum(it.q_of(d) * (it.q_of(d) - 0.5) for d in pushed_up) for it in pool])
-        c2 = np.zeros(nvar)
-        c2[:n] = -clarity
-        rel_row = np.zeros(nvar)
-        rel_row[:n] = p
-        candidate = run(c2, [rel_row], [(1.0 - delta) * r1 - SLACK_TOL], [np.inf], ub=slack_cap)
-        if candidate is not None:
-            x2 = candidate
-    return [it for it, xi in zip(pool, _binary(x2[:n])) if xi], limited
+    if not pushed_up:
+        return page_of(x1), limited
+    clarity = np.array([sum(it.q_of(d) * (it.q_of(d) - 0.5) for d in pushed_up) for it in pool])
+    c2 = np.zeros(nvar)
+    c2[:n] = -clarity
+    rel_row = np.zeros(nvar)
+    rel_row[:n] = p
+    x2 = run(c2, [rel_row], [(1.0 - delta) * r1 - SLACK_TOL], [np.inf], ub=slack_cap)
+    return page_of(x2 if x2 is not None else x1), limited
 
 
 def _binary(x: np.ndarray) -> np.ndarray:
@@ -217,6 +229,13 @@ def _binary(x: np.ndarray) -> np.ndarray:
 
 
 # --- Fallback (plan Step 17) -------------------------------------------------------
+
+
+def _gap(b: Bound, items) -> float:
+    total = sum(b.coefficient(it) for it in items)
+    if b.kind is BoundKind.LOWER_TOTAL:
+        return max(0.0, b.mass - total)
+    return max(0.0, total - b.mass)
 
 
 def _violation(items, bounds, registry) -> float:
