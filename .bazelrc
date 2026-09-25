@@ -1,0 +1,3 @@
+# Local cache that survives `bazel clean`.
+common --disk_cache=~/.cache/bazel-disk
+test --test_output=errors

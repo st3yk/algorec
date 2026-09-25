@@ -1,0 +1,20 @@
+"""Smoke test: the hermetic toolchain provides the solver the assembler needs."""
+
+import sys
+
+import pytest
+import scipy
+from scipy.optimize import milp  # noqa: F401  (import is the check: milp needs scipy >= 1.9)
+
+
+def test_python_is_hermetic_3_12():
+    assert sys.version_info[:2] == (3, 12)
+
+
+def test_scipy_has_milp():
+    major, minor = (int(x) for x in scipy.__version__.split(".")[:2])
+    assert (major, minor) >= (1, 9)
+
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, "-q"]))
