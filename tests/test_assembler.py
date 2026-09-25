@@ -470,6 +470,41 @@ def test_better_page_treats_violations_within_tolerance_as_equal():
     assert _better_page(b, c, edu_bound, DEFAULT_REGISTRY, 1) == c  # clearly less violation wins
 
 
+def test_only_stage0_is_solved_to_a_zero_mip_gap():
+    seen = []
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs["options"].get("mip_rel_gap"))
+        return milp(*args, **kwargs)
+
+    assemble(easy_pool(), single_slider(1.0), DEFAULT_REGISTRY, P, solver=spy)
+    assert seen == [0.0, None, None]
+
+
+def test_budget_includes_model_building(monkeypatch):
+    # Make model building slow by slowing score validation, then check stage 0 got less time.
+    import time
+
+    from steerrec.registry import Registry
+
+    real = Registry.check_scores
+
+    def slow(self, q):
+        time.sleep(0.01)
+        return real(self, q)
+
+    monkeypatch.setattr(Registry, "check_scores", slow)
+    limits = []
+
+    def spy(*args, **kwargs):
+        limits.append(kwargs["options"]["time_limit"])
+        return milp(*args, **kwargs)
+
+    pool = easy_pool()  # 20 items -> >= 0.2 s spent validating scores before the solver runs
+    assemble(pool, single_slider(1.0), DEFAULT_REGISTRY, P, time_limit_s=1.0, solver=spy)
+    assert limits[0] < 0.85
+
+
 def test_budget_is_shared_across_stages():
     calls = []
 
