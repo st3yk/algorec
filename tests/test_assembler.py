@@ -505,6 +505,12 @@ def test_budget_includes_model_building(monkeypatch):
     assert limits[0] < 0.85
 
 
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), -1.0])
+def test_time_limit_must_be_finite_and_non_negative(bad):
+    with pytest.raises(ValueError):
+        assemble(easy_pool(), single_slider(1.0), DEFAULT_REGISTRY, P, time_limit_s=bad)
+
+
 def test_budget_is_shared_across_stages():
     calls = []
 

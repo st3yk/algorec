@@ -90,6 +90,8 @@ def assemble(
     latency budget, so the default favors optimal pages; `hit_time_limit` reports
     any early stop.
     """
+    if not (math.isfinite(time_limit_s) and time_limit_s >= 0):
+        raise ValueError(f"time_limit_s must be finite and >= 0, got {time_limit_s!r}")
     deadline = time.perf_counter() + time_limit_s  # covers model building too
     # Canonical order: HiGHS resolves exact ties by variable order, so without this the
     # page could change when the caller shuffles the same pool.
