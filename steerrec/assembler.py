@@ -243,41 +243,54 @@ def _gap(b: Bound, items) -> float:
     return max(0.0, total - b.mass)
 
 
-def _violation(items, bounds, registry) -> float:
-    return sum(registry[b.dim_id].priority * _gap(b, items) for b in bounds)
-
-
-def _gap(b: Bound, items) -> float:
-    total = sum(b.coefficient(it) for it in items)
-    if b.kind is BoundKind.LOWER_TOTAL:
-        return max(0.0, b.mass - total)
-    return max(0.0, total - b.mass)
-
-
 def _swap_greedy(pool, u0, bounds, registry, page_size) -> list[Item]:
     """Start from U0; repeatedly make the single swap that most reduces the bound
     violation (ties: higher resulting relevance), keeping one item per creator.
     Stops when the bounds hold or no swap helps. Whatever is left is reported as
     shortfall by the caller.
+
+    Per-bound totals are updated incrementally, so each round costs
+    O(page * pool * bounds) arithmetic rather than re-summing every trial page.
     """
+    weights = [registry[b.dim_id].priority for b in bounds]
+    coef = {it.video_id: [b.coefficient(it) for b in bounds] for it in pool}
+    lower = [b.kind is BoundKind.LOWER_TOTAL for b in bounds]
+    masses = [b.mass for b in bounds]
+
+    def violation(totals):
+        return sum(
+            w * (max(0.0, m - t) if lo else max(0.0, t - m))
+            for w, t, m, lo in zip(weights, totals, masses, lower)
+        )
+
     page = list(u0)
-    while _violation(page, bounds, registry) > SLACK_TOL:
+    totals = [sum(coef[it.video_id][j] for it in page) for j in range(len(bounds))]
+    current = violation(totals)
+    while current > SLACK_TOL:
         in_page = {it.video_id for it in page}
-        current = _violation(page, bounds, registry)
-        best = None  # (violation, -relevance, out_index, candidate)
+        creator_count: dict[str, int] = {}
+        for it in page:
+            creator_count[it.creator_id] = creator_count.get(it.creator_id, 0) + 1
+        rel = sum(it.p for it in page)
+        best = None  # (key, out_index, candidate, new_totals, new_violation)
         for out_idx, out_item in enumerate(page):
-            creators = {it.creator_id for k, it in enumerate(page) if k != out_idx}
+            out_c = coef[out_item.video_id]
             for cand in pool:
-                if cand.video_id in in_page or cand.creator_id in creators:
+                if cand.video_id in in_page:
                     continue
-                trial = page[:out_idx] + [cand] + page[out_idx + 1:]
-                v = _violation(trial, bounds, registry)
-                key = (v, -sum(it.p for it in trial), out_idx, cand.video_id)
-                if v < current - SLACK_TOL and (best is None or key < best[0]):
-                    best = (key, out_idx, cand)
+                if creator_count.get(cand.creator_id, 0) - (cand.creator_id == out_item.creator_id) > 0:
+                    continue
+                in_c = coef[cand.video_id]
+                new_totals = [t - o + i for t, o, i in zip(totals, out_c, in_c)]
+                v = violation(new_totals)
+                if v >= current - SLACK_TOL:
+                    continue
+                key = (v, -(rel - out_item.p + cand.p), out_idx, cand.video_id)
+                if best is None or key < best[0]:
+                    best = (key, out_idx, cand, new_totals, v)
         if best is None:
             break
-        _, out_idx, cand = best
+        _, out_idx, cand, totals, current = best
         page[out_idx] = cand
     return page
 

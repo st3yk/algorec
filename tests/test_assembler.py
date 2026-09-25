@@ -371,6 +371,47 @@ def test_fallback_respects_creator_rule_and_reports_what_it_cannot_meet(seed):
         assert g <= SLACK_TOL or reported[b.dim_id] == pytest.approx(g)
 
 
+def naive_swap_greedy(pool, u0, bounds, page_size):
+    """Reference implementation: re-sum every trial page (the pre-optimization algorithm)."""
+    def violation(items):
+        return sum(gap(b, items) for b in bounds)  # all priorities are 1 in DEFAULT_REGISTRY
+
+    page = list(u0)
+    while violation(page) > SLACK_TOL:
+        in_page = {it.video_id for it in page}
+        current = violation(page)
+        best = None
+        for out_idx in range(len(page)):
+            creators = {it.creator_id for k, it in enumerate(page) if k != out_idx}
+            for cand in pool:
+                if cand.video_id in in_page or cand.creator_id in creators:
+                    continue
+                trial = page[:out_idx] + [cand] + page[out_idx + 1:]
+                v = violation(trial)
+                key = (v, -sum(it.p for it in trial), out_idx, cand.video_id)
+                if v < current - SLACK_TOL and (best is None or key < best[0]):
+                    best = (key, out_idx, cand)
+        if best is None:
+            break
+        page[best[1]] = best[2]
+    return page
+
+
+@pytest.mark.parametrize("seed", range(12))
+def test_incremental_fallback_matches_the_naive_reference(seed):
+    from steerrec.assembler import _swap_greedy
+
+    rng = random.Random(seed)
+    pool = random_pool(rng, 60, 30, edu_bias=rng.uniform(-0.5, 0.2))
+    s = rng.choice([-1.0, -0.4, 0.4, 1.0])
+    u0 = unsteered_page(pool, P)
+    bounds = compute_bounds(single_slider(s), u0, DEFAULT_REGISTRY, P)
+    fast = _swap_greedy(pool, u0, bounds, DEFAULT_REGISTRY, P)
+    ref = naive_swap_greedy(pool, u0, bounds, P)
+    assert [it.video_id for it in fast] == [it.video_id for it in ref]
+    assert sum(gap(b, fast) for b in bounds) == pytest.approx(sum(gap(b, ref) for b in bounds))
+
+
 def test_fallback_meets_bounds_when_an_easy_swap_exists():
     light = [Item(f"l{i}", f"cl{i}", 0.9 - i * 0.01, q={EDUCATIONAL: 0.0, LIGHT: 0.9}) for i in range(10)]
     edu = [Item(f"e{i}", f"ce{i}", 0.5 - i * 0.01, q={EDUCATIONAL: 1.0, LIGHT: 0.0}) for i in range(10)]
