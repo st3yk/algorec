@@ -123,6 +123,54 @@ def test_every_bound_is_met_or_its_gap_is_reported(seed):
             assert b.dim_id not in reported
 
 
+# --- stage 2 (clarity) --------------------------------------------------------------
+
+
+def clarity_pool(a, b):
+    """U0 = {L, E1, E2}. At s = 1 the light bound forces L out and the edu bound is met by
+    E1 + E2, so exactly one free slot is filled by `a` or `b` (neither is light)."""
+    return [
+        Item("L", "cL", 0.95, q={EDUCATIONAL: 0.0, LIGHT: 0.9}),
+        Item("E1", "c1", 0.90, q={EDUCATIONAL: 1.0, LIGHT: 0.0}),
+        Item("E2", "c2", 0.88, q={EDUCATIONAL: 1.0, LIGHT: 0.0}),
+        a,
+        b,
+    ]
+
+
+def free_slot(page):
+    return ({it.video_id for it in page.items} - {"E1", "E2"}).pop()
+
+
+def test_stage2_objective_is_q_times_q_minus_half():
+    # A: q_edu 0.3 -> clarity -0.06; B: q_edu 0 -> clarity 0. q(q - 0.5) prefers B (not borderline);
+    # a plain "maximize q" objective would prefer A. B costs 0.005 relevance, within delta.
+    a = Item("A", "cA", 0.600, q={EDUCATIONAL: 0.3, LIGHT: 0.0})
+    b = Item("B", "cB", 0.595, q={EDUCATIONAL: 0.0, LIGHT: 0.0})
+    page = assemble(clarity_pool(a, b), single_slider(1.0), DEFAULT_REGISTRY, 3)
+    assert free_slot(page) == "B"
+    assert free_slot(assemble(clarity_pool(a, b), single_slider(1.0), DEFAULT_REGISTRY, 3, delta=0.0)) == "A"
+
+
+def test_stage2_prefers_clear_items_within_delta_but_not_beyond():
+    clear = Item("C", "cC", 0.59, q={EDUCATIONAL: 0.95, LIGHT: 0.0})
+    vague = Item("D", "cD", 0.60, q={EDUCATIONAL: 0.55, LIGHT: 0.0})
+    assert free_slot(assemble(clarity_pool(clear, vague), single_slider(1.0), DEFAULT_REGISTRY, 3)) == "C"
+    # Same, but the clear item costs 0.4 relevance: more than delta * R1 (~0.048), so it loses.
+    far = Item("C", "cC", 0.20, q={EDUCATIONAL: 0.95, LIGHT: 0.0})
+    assert free_slot(assemble(clarity_pool(far, vague), single_slider(1.0), DEFAULT_REGISTRY, 3)) == "D"
+
+
+def test_stage2_breaks_clarity_ties_by_relevance_regardless_of_pool_order():
+    # Light items all have q_edu = 0 (equal clarity); the light bound leaves room for one.
+    light = [Item(f"l{i}", f"cl{i}", 0.90 - i * 0.01, q={EDUCATIONAL: 0.0, LIGHT: 0.9}) for i in range(10)]
+    edu = [Item(f"e{i}", f"ce{i}", 0.5, q={EDUCATIONAL: 1.0, LIGHT: 0.0}) for i in range(10)]
+    for pool in (light + edu, list(reversed(light + edu))):
+        page = assemble(pool, single_slider(1.0), DEFAULT_REGISTRY, P)
+        kept = [it.video_id for it in page.items if it.video_id.startswith("l")]
+        assert kept == ["l0"]
+
+
 # --- optimality against brute force (stages 0-2) ------------------------------------
 
 

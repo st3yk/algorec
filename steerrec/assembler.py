@@ -28,6 +28,9 @@ from steerrec.registry import Registry
 from steerrec.targets import Bound, BoundKind, compute_bounds, dedupe_pool, unsteered_page
 
 SLACK_TOL = 1e-6
+# Stage 2 breaks clarity ties by relevance; this weight keeps relevance strictly secondary.
+CLARITY_TIE_BREAK = 1e-4
+
 log = logging.getLogger(__name__)
 
 
@@ -212,12 +215,14 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -
     r1 = float(p @ _binary(x1[:n]))
 
     # Stage 2: prefer clear examples of pushed-up dimensions, losing at most delta of R1.
+    # Among equally clear pages, a tiny relevance term picks the more relevant one;
+    # otherwise the choice would be arbitrary and depend on pool order.
     pushed_up = bounds[0].pushed_up
     if not pushed_up:
         return page_of(x1), limited
     clarity = np.array([sum(it.q_of(d) * (it.q_of(d) - 0.5) for d in pushed_up) for it in pool])
     c2 = np.zeros(nvar)
-    c2[:n] = -clarity
+    c2[:n] = -clarity - CLARITY_TIE_BREAK * p
     rel_row = np.zeros(nvar)
     rel_row[:n] = p
     x2 = run(c2, [rel_row], [(1.0 - delta) * r1 - SLACK_TOL], [np.inf], ub=slack_cap)
