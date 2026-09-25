@@ -157,14 +157,18 @@ def test_shares_are_normalized_by_page_size_not_pool_size():
 
 @pytest.mark.parametrize("s", [0.5, -0.5, 0.25, -0.8])
 def test_targets_interpolate_linearly_in_abs_s(s):
-    u0 = [Item(f"v{i}", f"c{i}", 0.5, q={EDUCATIONAL: 0.2, LIGHT: 0.5}) for i in range(P)]
+    # Chosen so every reference lies strictly between the end points, for both signs:
+    # u_edu = 0.4, u_light = 0.5, ubar_light = 0.5 * 0.6 = 0.3, ubar_edu = 0.4 * 0.5 = 0.2.
+    q_edu, q_light = 0.4, 0.5
+    u0 = [Item(f"v{i}", f"c{i}", 0.5, q={EDUCATIONAL: q_edu, LIGHT: q_light}) for i in range(P)]
     bounds = {b.dim_id: b for b in compute_bounds(single_slider(s), u0, DEFAULT_REGISTRY, P)}
     up, down = (EDUCATIONAL, LIGHT) if s > 0 else (LIGHT, EDUCATIONAL)
-    u = 0.2 if up == EDUCATIONAL else 0.5
-    q_down, q_up = (0.5, 0.2) if down == LIGHT else (0.2, 0.5)
-    ubar = q_down * (1 - q_up)
+    q = {EDUCATIONAL: q_edu, LIGHT: q_light}
+    u = q[up]
+    ubar = q[down] * (1 - q[up])
     t_hi = max(DEFAULT_REGISTRY[up].t_max, u)
     t_lo = min(DEFAULT_REGISTRY[down].t_min, ubar)
+    assert t_hi > u and ubar > t_lo  # both halves actually interpolate
     assert bounds[up].target == pytest.approx(u + abs(s) * (t_hi - u))
     assert bounds[down].target == pytest.approx(ubar - abs(s) * (ubar - t_lo))
 
