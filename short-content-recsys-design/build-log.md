@@ -15,10 +15,10 @@ This is a minimal, readable slice meant for understanding the core idea, with no
 
 ## Current state
 
-- **Milestone / round**: M1 SHIP (round 3); M3 SHIP (round 1, minors fixed); M2 round 2 ITERATE → fixed; M2 round 3 (final, cap) next
-- **Last green commit**: `21b89fc`
-- **Waiting on**: nothing
-- **Next action**: M2 round 3 review of `701b278..HEAD`, then publish the change artifact
+- **Milestone / round**: M1 SHIP · M3 SHIP · M2 stopped at the 3-round review cap (round 3: 0/1/4/2). All round-3 findings are fixed, but those fixes are **not re-reviewed**
+- **Last green commit**: `f2a3d03` (`bazel test //... --nocache_test_results`: 7/7 pass)
+- **Waiting on**: the user's decision: run a 4th M2 review round, or accept
+- **Next action**: publish the change artifact
 
 ## Milestones
 
@@ -39,7 +39,7 @@ This is a minimal, readable slice meant for understanding the core idea, with no
     5. At s = 0 the page equals `U0`.
     6. Steered items (those not in `U0`) sit at evenly spaced positions.
     7. The fallback respects the creator rule and reports any remaining violation as shortfall.
-  - Review: round 1 ITERATE (0/4/5/2) → fixed; round 2 ITERATE (0/3/1/3) → fixed; round 3 pending
+  - Review: round 1 ITERATE (0/4/5/2) → fixed; round 2 ITERATE (0/3/1/3) → fixed; round 3 ITERATE (0/1/4/2) → fixed, **not re-reviewed (cap reached)**
 - [x] **M3 — Synthetic catalog + demo + README** (plan criterion 1 shape)
   - Acceptance:
     1. `bazel run //steerrec:demo` prints pages and shares for a slider sweep on a seeded synthetic pool.
@@ -74,7 +74,7 @@ This is a minimal, readable slice meant for understanding the core idea, with no
 
 ## Decisions
 
-- **Stage-0 weights**: cardinality slack weight = 1 + Σ_d priority_d. One item changes each bound's mass by at most 1, so this weight is the smallest that makes filling the page always beat leaving a slot empty to improve the mix. Equal weights (as the plan lists them) would tie, making the choice arbitrary and nondeterministic.
+- **Stage-0 weights**: cardinality slack weight = 1 + Σ_d priority_d, so filling the page beats leaving a slot empty. Equal weights (as the plan lists them) would tie, making the choice arbitrary. Since round 3 there is also a hard `Σx ≥ |U0|` row. The hard neutral rows cap absolute mass, so "add an item for at most Σ priority more slack" no longer always holds, and without the row stage 0 could drop an item. Cardinality slack now means only a real shortage.
 - **Shortfall amounts** are computed from the realized page (gap to each bound's mass), not read from solver slack values. They are equal at the optimum, and this stays correct when the fallback page is used.
 - **Missing score = 0**: `Item.q_of` treats a dimension the item has no score for as q = 0 ("not that kind"). This is recorded rather than enforced (M1 round 2, minor 3). In the full system, every item is scored for every registered dimension before it can be retrieved (plan Step 23), so this only affects hand-built fixtures. Misspelled keys are still rejected by `check_scores`.
 - **Stage 2 is a step at s ≠ 0** (demo finding, confirmed by the M2 reviewer): the clarity objective isn't scaled by |s|, so at δ = 0.02 any s ≠ 0 can already swap items. On the seed-0 pool that's 4 swaps at s = −0.2, the same as at s = −1. On 50 random pools the page differed from U0 at s = 1e-6 in 50/50 cases, and mean edu share jumped 0.418 → 0.501 from s = 0 to 0.1, about 30% of the whole sweep's range. Kept as the plan specifies. Scaling δ by |s|, or skipping stage 2 when the stage-1 page equals U0, is a candidate for the next design pass.
@@ -161,4 +161,19 @@ The round-2 fixes are re-reviewed as **M1 round 3** by the same fresh reviewer t
 | M3 | nit | Sweep excerpt dropped rows silently | Fixed in `21b89fc` |
 | M3 | nit | Demo hard-codes "top-10", misleading fallback text, duplicate srcs | Fixed in `f77a4d8` |
 
+### M2 — Assembler · Round 3 (final: review cap reached)
+
+**Reviewed**: `701b278..f502c11` · **Verdict**: blocker=0, major=1, minor=4, nit=2 → ITERATE
+
+| Severity | Finding | Action |
+|---|---|---|
+| major | The neutral rows can make stage 0 drop an item on a creator-limited pool (5 of 6 served while U0 was a valid full page) | Fixed in `1e6167a` (hard `Σx ≥ \|U0\|`; regression test fails without the fix; brute force only enumerates full-size pages) |
+| minor | The 30-seed neutral property test passed with both guards removed | Fixed in `be8649e` (scaled-up minimal case; fails on 30/30 seeds with either guard removed) |
+| minor | Stage-1 comparison tested in one direction only | Fixed in `20b22ef` (greedy-stalls test via monkeypatch) |
+| minor | 59b4f1a's budget and MIP-gap changes untested; the commit bundles three changes | Tests added in `4146d20`. The bundling can't be split after the fact and is noted here |
+| minor | numpy scalars rejected by the new control type check | Fixed in `f2a3d03` (`numbers.Real`) |
+| nit | Stage-1 comparison at 1e-9 vs the 1e-6 shortfall tolerance | Fixed in `20b22ef` |
+| nit | `time_limit_s` not validated (NaN meant no limit) | Fixed in `52a858e` |
+
+**Cap status**: M2 did not reach SHIP within 3 rounds. The findings got smaller each round (4 → 3 → 1 majors) and narrower (the last major needed a crafted creator-limited pool; 0 of 1,732 random and synthetic cases hit it). All are fixed with tests that fail without the fix, but no fresh reviewer has checked the round-3 fixes. The user decides whether to run a 4th round.
 
