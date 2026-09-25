@@ -130,8 +130,8 @@ These are recorded in [`build-log.md`](short-content-recsys-design/build-log.md)
   scaling its effect by |s| is a candidate change.
 - **Solver time.** On a 300-item pool the ILP stages take ~20–150 ms each,
   not "a few ms". With the plan's 50 ms limit, pages silently got worse. The
-  slice now defaults to 2 s per stage and flags any early stop. Meeting a
-  300 ms budget will need a smaller pool or warm starts.
+  slice now uses one shared 2 s budget for all stages and flags any early
+  stop. Meeting a 300 ms budget will need a smaller pool or warm starts.
 - The creator rule is a hard constraint here, and shortfalls have no "reason"
   field (that needs the retrieval stages).
 
