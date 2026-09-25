@@ -13,7 +13,7 @@ bazel build //...                 # build everything
 bazel test //...                  # run all tests (results are cached)
 bazel run //steerrec:demo         # steered pages + a slider sweep on synthetic data
 bazel run //steerrec:demo -- --slider 0.7 --seed 3
-bazel run //steerrec:demo -- --sweep-only --delta 0   # compare without the stage-2 tie-break
+bazel run //steerrec:demo -- --sweep-only --delta 0   # compare without stage 2's clarity preference
 ```
 
 ## Dependencies
