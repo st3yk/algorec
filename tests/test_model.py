@@ -38,6 +38,12 @@ def test_nan_control_is_rejected_not_clamped_to_one():
     assert DEFAULT_REGISTRY.validate_control({EDUCATIONAL: float("inf")}) == {EDUCATIONAL: 1.0}
 
 
+@pytest.mark.parametrize("bad", ["0.5", True, None])
+def test_non_numeric_control_is_rejected(bad):
+    with pytest.raises(ValueError):
+        DEFAULT_REGISTRY.validate_control({EDUCATIONAL: bad})
+
+
 def test_duplicate_dimension_ids_rejected():
     with pytest.raises(ValueError):
         Registry([Dimension("e", t_max=0.6), Dimension("e", t_max=0.9)])

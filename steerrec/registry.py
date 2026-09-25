@@ -66,6 +66,9 @@ class Registry:
             raise ValueError(f"unknown dimension(s) in control: {sorted(unknown)}")
         out = {}
         for dim_id, s in control.items():
+            # bool is an int subclass, and float("0.5") would accept strings: reject both.
+            if isinstance(s, bool) or not isinstance(s, (int, float)):
+                raise ValueError(f"control[{dim_id}] must be a number, got {s!r}")
             s = float(s)
             if math.isnan(s):  # max/min would silently turn NaN into +1 ("maximum learning")
                 raise ValueError(f"control[{dim_id}] is NaN")
