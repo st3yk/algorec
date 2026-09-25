@@ -143,11 +143,17 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, deadline, solver) -> tu
         lo.append(low)
         hi.append(high)
 
-    # Page size: sum x + card_slack = P.
+    # Page size: sum x + card_slack = P, and never fewer items than U0 has. U0 is the largest
+    # page the creator rule allows, so card_slack is only ever the pool's real shortage. Without
+    # the second row, the hard neutral rows below could make dropping an item the cheapest way
+    # to satisfy them, and stage 0 would serve a short page although a full one exists.
     row = np.zeros(nvar)
     row[:n] = 1
     row[i_card] = 1
     add(row, page_size, page_size)
+    row = np.zeros(nvar)
+    row[:n] = 1
+    add(row, len(unsteered_page(pool, page_size)), np.inf)
     # Steering bounds, each softened by its own slack.
     for j, b in enumerate(bounds):
         row = np.zeros(nvar)

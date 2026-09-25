@@ -225,6 +225,18 @@ def test_page_does_not_depend_on_pool_order_even_with_tied_scores(seed):
         assert [it.video_id for it in a.items] == [it.video_id for it in b.items]
 
 
+def test_creator_limited_pool_keeps_the_page_full():
+    # Regression (M2 round 3): every full page must contain U6 (its creator has no other item),
+    # and the only full page not worse than neutral is U0. Stage 0 used to prefer dropping an
+    # item (cardinality slack 3.0) over U0's bound slack (4.0) and served 5 of 6 items.
+    u = [Item(f"U{i}", f"c{i}", 0.9 - i * 0.001, q={EDUCATIONAL: 0.0, LIGHT: 0.0}) for i in range(1, 6)]
+    u6 = Item("U6", "c6", 0.8, q={EDUCATIONAL: 0.0, LIGHT: 1.0})
+    a = [Item(f"A{i}", f"c{i}", 0.3 - i * 0.001, q={EDUCATIONAL: 0.9, LIGHT: 1.0}) for i in range(1, 6)]
+    page = assemble(u + [u6] + a, single_slider(1.0), DEFAULT_REGISTRY, 6)
+    assert len(page.items) == 6
+    assert all(sf.kind is not ShortfallKind.CARDINALITY for sf in page.shortfalls)
+
+
 # --- never worse than neutral, even with shortfall (plan Step 14) ----------------------
 
 
@@ -268,7 +280,8 @@ def brute_force(pool, bounds, page_size, delta):
     pushed_up = bounds[0].pushed_up if bounds else ()
     w_card = 1.0 + len(bounds)
     best = []
-    for k in range(page_size + 1):
+    full = len(unsteered_page(pool, page_size))  # the largest creator-respecting page
+    for k in range(full, page_size + 1):
         for combo in itertools.combinations(pool, k):
             if len({it.creator_id for it in combo}) < k:
                 continue
