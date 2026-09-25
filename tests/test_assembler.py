@@ -413,10 +413,18 @@ def test_stage0_limit_without_incumbent_falls_back_to_greedy():
 
 
 @pytest.mark.parametrize("action", ["limit_no_incumbent", "raise"])
-def test_stage1_failure_keeps_the_stage0_page_instead_of_greedy(action):
-    page = assemble(easy_pool(), single_slider(1.0), DEFAULT_REGISTRY, P, solver=ScriptedSolver({1: action}))
+@pytest.mark.parametrize("s", [-1.0, 0.5, 1.0])
+def test_stage1_failure_serves_a_relevant_page_not_the_relevance_blind_stage0_one(action, s):
+    # Regression: stage 0 has no relevance term, so serving its page after a stage-1
+    # failure gave mean p ~0.40 on this pool where greedy gets ~0.78 (optimum ~0.85).
+    from steerrec.synthetic import make_catalog
+
+    cat = make_catalog(300, seed=0)
+    page = assemble(cat.items, single_slider(s), DEFAULT_REGISTRY, P, solver=ScriptedSolver({1: action}))
+    greedy = assemble(cat.items, single_slider(s), DEFAULT_REGISTRY, P, solver=failing_solver)
     assert not page.used_fallback
-    assert page.shortfalls == []  # stage 0's page is slack-minimal, so it still meets the bounds
+    assert page.shortfalls == greedy.shortfalls == []
+    assert sum(it.p for it in page.items) >= sum(it.p for it in greedy.items) - 1e-9
 
 
 def test_budget_is_shared_across_stages():

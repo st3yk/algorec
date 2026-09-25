@@ -225,7 +225,16 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -
     c1[:n] = -p
     x1 = run(c1, ub=slack_cap)
     if x1 is None:
-        return page_of(x0), limited
+        # Stage 0 knows nothing about relevance, so its page can be far worse than the
+        # greedy fallback. Serve whichever is better: less weighted violation, then
+        # more relevance.
+        greedy = _swap_greedy(pool, unsteered_page(pool, page_size), bounds, registry, page_size)
+        stage0 = page_of(x0)
+
+        def quality(items):
+            return (round(_weighted_violation(items, bounds, registry, page_size), 9), -sum(it.p for it in items))
+
+        return min((stage0, greedy), key=quality), limited
     r1 = float(p @ _binary(x1[:n]))
 
     # Stage 2: prefer clear examples of pushed-up dimensions, losing at most delta of R1.
@@ -248,6 +257,12 @@ def _binary(x: np.ndarray) -> np.ndarray:
 
 
 # --- Fallback (plan Step 17) -------------------------------------------------------
+
+
+def _weighted_violation(items, bounds, registry, page_size) -> float:
+    """Stage-0 objective of a page: priority-weighted bound gaps plus the page-size gap."""
+    w_card = 1.0 + sum(registry[b.dim_id].priority for b in bounds)
+    return sum(registry[b.dim_id].priority * _gap(b, items) for b in bounds) + w_card * (page_size - len(items))
 
 
 def _gap(b: Bound, items) -> float:
