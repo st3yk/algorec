@@ -46,6 +46,11 @@ def test_unsteered_page_ties_are_deterministic():
     assert [it.video_id for it in unsteered_page(pool, 1)] == ["a"]
 
 
+def test_unsteered_page_is_independent_of_pool_order_with_duplicate_ids():
+    a1, a2 = Item("a", "c1", 0.5), Item("a", "c2", 0.5)
+    assert unsteered_page([a1, a2], 5) == unsteered_page([a2, a1], 5) == [a1]
+
+
 def test_unsteered_page_handles_small_and_empty_pools():
     pool = [Item("a", "c1", 0.5), Item("b", "c1", 0.4)]
     assert [it.video_id for it in unsteered_page(pool, 10)] == ["a"]
@@ -133,6 +138,37 @@ def test_shares_are_normalized_by_page_size_not_pool_size():
     u0 = [Item("v", "c", 0.5, q={EDUCATIONAL: 1.0})]
     assert total_share(u0, EDUCATIONAL, P) == pytest.approx(0.1)
     assert exclusive_share(u0, EDUCATIONAL, (), P) == pytest.approx(0.1)
+
+
+@pytest.mark.parametrize("s", [0.5, -0.5, 0.25, -0.8])
+def test_targets_interpolate_linearly_in_abs_s(s):
+    u0 = [Item(f"v{i}", f"c{i}", 0.5, q={EDUCATIONAL: 0.2, LIGHT: 0.5}) for i in range(P)]
+    bounds = {b.dim_id: b for b in compute_bounds(single_slider(s), u0, DEFAULT_REGISTRY, P)}
+    up, down = (EDUCATIONAL, LIGHT) if s > 0 else (LIGHT, EDUCATIONAL)
+    u = 0.2 if up == EDUCATIONAL else 0.5
+    q_down, q_up = (0.5, 0.2) if down == LIGHT else (0.2, 0.5)
+    ubar = q_down * (1 - q_up)
+    t_hi = max(DEFAULT_REGISTRY[up].t_max, u)
+    t_lo = min(DEFAULT_REGISTRY[down].t_min, ubar)
+    assert bounds[up].target == pytest.approx(u + abs(s) * (t_hi - u))
+    assert bounds[down].target == pytest.approx(ubar - abs(s) * (ubar - t_lo))
+
+
+def test_dimension_at_zero_is_unconstrained_and_not_pushed_up():
+    reg = Registry([Dimension(EDUCATIONAL), Dimension(LIGHT), Dimension("calm")])
+    u0 = [Item(f"v{i}", f"c{i}", 0.5, q={EDUCATIONAL: 0.3, LIGHT: 0.4, "calm": 0.5}) for i in range(P)]
+    bounds = {b.dim_id: b for b in compute_bounds({EDUCATIONAL: 1, "calm": 0, LIGHT: -1}, u0, reg, P)}
+    assert set(bounds) == {EDUCATIONAL, LIGHT}
+    assert bounds[LIGHT].pushed_up == (EDUCATIONAL,)
+    assert bounds[LIGHT].reference == pytest.approx(0.4 * 0.7)
+
+
+def test_bounds_reject_unknown_score_keys_and_oversized_u0():
+    with pytest.raises(ValueError):
+        compute_bounds(single_slider(0.5), [Item("v", "c", 0.5, q={"educationl": 0.5})], DEFAULT_REGISTRY, P)
+    u0 = [Item(f"v{i}", f"c{i}", 0.5) for i in range(P + 1)]
+    with pytest.raises(ValueError):
+        compute_bounds(single_slider(0.5), u0, DEFAULT_REGISTRY, P)
 
 
 def test_n_dimensions_use_the_same_formulas():

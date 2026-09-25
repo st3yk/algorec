@@ -20,19 +20,22 @@ def unsteered_page(pool: Sequence[Item], page_size: int) -> list[Item]:
 
     Greedy is exact here: taking the best item of each creator and then the
     top-P of those is the same as scanning by descending p and skipping repeats.
-    Ties are broken by video_id so the result is deterministic.
+    Ties are broken by (video_id, creator_id), and a video_id seen twice is kept
+    once, so the result doesn't depend on the pool's order.
     """
     if page_size < 0:
         raise ValueError("page_size must be >= 0")
     page: list[Item] = []
     creators: set[str] = set()
-    for item in sorted(pool, key=lambda it: (-it.p, it.video_id)):
+    videos: set[str] = set()
+    for item in sorted(pool, key=lambda it: (-it.p, it.video_id, it.creator_id)):
         if len(page) == page_size:
             break
-        if item.creator_id in creators:
+        if item.creator_id in creators or item.video_id in videos:
             continue
         page.append(item)
         creators.add(item.creator_id)
+        videos.add(item.video_id)
     return page
 
 
@@ -111,6 +114,10 @@ def compute_bounds(
     """
     if page_size <= 0:
         raise ValueError("page_size must be > 0")
+    if len(u0) > page_size:
+        raise ValueError(f"u0 has {len(u0)} items but page_size is {page_size}")
+    for item in u0:
+        registry.check_scores(item.q)
     control = registry.validate_control(control)
     pushed_up = tuple(d for d, s in control.items() if s > 0)
     bounds: list[Bound] = []
