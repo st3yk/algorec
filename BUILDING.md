@@ -11,8 +11,6 @@ Install [Bazelisk](https://github.com/bazelbuild/bazelisk). It reads `.bazelvers
 ```sh
 bazel build //...                 # build everything
 bazel test //...                  # run all tests (results are cached)
-bazel run //steerrec:demo         # print steered pages for a slider sweep on synthetic data
-bazel run //steerrec:demo -- --help
 ```
 
 ## Dependencies
