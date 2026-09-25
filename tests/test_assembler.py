@@ -253,22 +253,29 @@ def test_shortfall_page_is_never_below_neutral_minimal_case():
 
 @pytest.mark.parametrize("seed", range(30))
 def test_every_page_stays_on_the_slider_side_of_neutral(seed):
-    # Pools where the relevant items are light and only mildly educational, so shortfall is common.
+    # Scaled-up version of the minimal case, so the trade-off really happens: the relevant items
+    # are mid-educational and very light (both bounds unmeetable at |s| = 1), and the alternates
+    # are less educational but not light. Swapping toward the alternates would shrink the light
+    # miss while dropping edu below U0; the guard must forbid that in the ILP and the greedy.
     rng = random.Random(seed)
-    pool = [
-        Item(f"v{i:03d}", f"c{rng.randrange(40)}", rng.random(),
-             q={EDUCATIONAL: rng.uniform(0.0, 0.5), LIGHT: rng.uniform(0.3, 1.0)})
-        for i in range(60)
+    relevant = [
+        Item(f"r{i}", f"cr{i}", rng.uniform(0.7, 0.95), q={EDUCATIONAL: rng.uniform(0.4, 0.55), LIGHT: rng.uniform(0.8, 1.0)})
+        for i in range(P)
     ]
-    for s in (-1.0, -0.5, 0.5, 1.0):
-        for solver in (milp, failing_solver):
-            page = assemble(pool, single_slider(s), DEFAULT_REGISTRY, P, solver=solver)
-            for b in page.bounds:
-                realized = b.realized(page.items)
-                if b.kind is BoundKind.LOWER_TOTAL:
-                    assert realized >= b.reference - 1e-6
-                else:
-                    assert realized <= b.reference + 1e-6
+    alternates = [
+        Item(f"a{i}", f"ca{i}", rng.uniform(0.2, 0.6), q={EDUCATIONAL: rng.uniform(0.2, 0.35), LIGHT: 0.0})
+        for i in range(P)
+    ]
+    pool = relevant + alternates
+    for solver in (milp, failing_solver):
+        page = assemble(pool, single_slider(1.0), DEFAULT_REGISTRY, P, solver=solver)
+        assert page.shortfalls  # the scenario really is infeasible
+        for b in page.bounds:
+            realized = b.realized(page.items)
+            if b.kind is BoundKind.LOWER_TOTAL:
+                assert realized >= b.reference - 1e-6
+            else:
+                assert realized <= b.reference + 1e-6
 
 
 # --- optimality against brute force (stages 0-2) ------------------------------------
