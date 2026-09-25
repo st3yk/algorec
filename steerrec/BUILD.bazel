@@ -1,0 +1,16 @@
+load("@rules_python//python:py_library.bzl", "py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+py_library(
+    name = "items",
+    srcs = [
+        "__init__.py",
+        "items.py",
+    ],
+)
+
+py_library(
+    name = "registry",
+    srcs = ["registry.py"],
+)

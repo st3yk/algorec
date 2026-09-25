@@ -9,3 +9,14 @@ py_test(
         "@pypi//scipy",
     ],
 )
+
+py_test(
+    name = "test_model",
+    size = "small",
+    srcs = ["test_model.py"],
+    deps = [
+        "//steerrec:items",
+        "//steerrec:registry",
+        "@pypi//pytest",
+    ],
+)
