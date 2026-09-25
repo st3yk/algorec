@@ -5,6 +5,7 @@ rubric, gold labels and a scoring head). Everything downstream iterates over it.
 """
 
 import math
+import numbers
 from dataclasses import dataclass
 from typing import Iterable, Mapping
 
@@ -66,8 +67,8 @@ class Registry:
             raise ValueError(f"unknown dimension(s) in control: {sorted(unknown)}")
         out = {}
         for dim_id, s in control.items():
-            # bool is an int subclass, and float("0.5") would accept strings: reject both.
-            if isinstance(s, bool) or not isinstance(s, (int, float)):
+            # Any real number (including numpy scalars) is fine; strings and bool are not.
+            if isinstance(s, bool) or not isinstance(s, numbers.Real):
                 raise ValueError(f"control[{dim_id}] must be a number, got {s!r}")
             s = float(s)
             if math.isnan(s):  # max/min would silently turn NaN into +1 ("maximum learning")

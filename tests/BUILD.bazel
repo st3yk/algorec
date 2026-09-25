@@ -17,6 +17,7 @@ py_test(
     deps = [
         "//steerrec:items",
         "//steerrec:registry",
+        "@pypi//numpy",
         "@pypi//pytest",
     ],
 )

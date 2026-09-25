@@ -44,6 +44,15 @@ def test_non_numeric_control_is_rejected(bad):
         DEFAULT_REGISTRY.validate_control({EDUCATIONAL: bad})
 
 
+def test_numpy_scalars_are_accepted():
+    import numpy as np
+
+    assert DEFAULT_REGISTRY.validate_control({EDUCATIONAL: np.float32(0.5), LIGHT: np.int64(-1)}) == {
+        EDUCATIONAL: 0.5,
+        LIGHT: -1.0,
+    }
+
+
 def test_duplicate_dimension_ids_rejected():
     with pytest.raises(ValueError):
         Registry([Dimension("e", t_max=0.6), Dimension("e", t_max=0.9)])
