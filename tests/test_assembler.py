@@ -122,12 +122,29 @@ def test_all_light_pool_at_max_learning_fills_page_and_reports_both_shortfalls()
     assert reported == {EDUCATIONAL: pytest.approx(6.0), LIGHT: pytest.approx(9.0)}
 
 
+@pytest.mark.parametrize("seed", range(20))
+def test_bounds_are_met_whenever_supply_makes_them_feasible(seed):
+    # Independent of the shortfall formula: with at least P clear items of each kind from
+    # distinct creators, every bound is feasible, so there must be no shortfall at all.
+    rng = random.Random(seed)
+    edu = [Item(f"e{i}", f"ce{i}", rng.uniform(0.05, 0.6), q={EDUCATIONAL: 1.0, LIGHT: 0.0}) for i in range(15)]
+    light = [Item(f"l{i}", f"cl{i}", rng.uniform(0.4, 1.0), q={EDUCATIONAL: 0.0, LIGHT: 1.0}) for i in range(15)]
+    mixed = random_pool(rng, 30, 25)
+    for s in (-1.0, -0.5, 0.5, 1.0):
+        page = assemble(edu + light + mixed, single_slider(s), DEFAULT_REGISTRY, P)
+        assert not page.used_fallback
+        assert page.shortfalls == []
+        for b in page.bounds:
+            assert gap(b, page.items) <= SLACK_TOL
+
+
 @pytest.mark.parametrize("seed", range(40))
 def test_every_bound_is_met_or_its_gap_is_reported(seed):
     rng = random.Random(seed)
     pool = random_pool(rng, rng.randrange(5, 60), rng.randrange(3, 30), edu_bias=rng.uniform(-0.6, 0.2))
     s = rng.choice([-1.0, -0.6, -0.2, 0.2, 0.6, 1.0])
     page = assemble(pool, single_slider(s), DEFAULT_REGISTRY, P)
+    assert not page.used_fallback and not page.hit_time_limit
     assert len({it.video_id for it in page.items}) == len(page.items)
     assert len({it.creator_id for it in page.items}) == len(page.items)
     reported = {sf.dim_id: sf.amount for sf in page.shortfalls if sf.kind is ShortfallKind.BOUND}
@@ -253,6 +270,7 @@ def test_mean_realized_share_is_monotone_across_slider_points(sign):
         ms, xs = [], []
         for pool in pools:
             page = assemble(pool, single_slider(sign * step / 10), DEFAULT_REGISTRY, P)
+            assert not page.used_fallback and not page.hit_time_limit
             if page.shortfalls:
                 continue  # criterion 1 reports shortfall pages separately
             ms.append(sum(it.q_of(up) for it in page.items) / P)
