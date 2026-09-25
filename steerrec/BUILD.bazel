@@ -14,3 +14,12 @@ py_library(
     name = "registry",
     srcs = ["registry.py"],
 )
+
+py_library(
+    name = "targets",
+    srcs = ["targets.py"],
+    deps = [
+        ":items",
+        ":registry",
+    ],
+)
