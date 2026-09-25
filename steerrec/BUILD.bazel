@@ -35,3 +35,12 @@ py_library(
         "@pypi//scipy",
     ],
 )
+
+py_library(
+    name = "synthetic",
+    srcs = ["synthetic.py"],
+    deps = [
+        ":items",
+        ":registry",
+    ],
+)

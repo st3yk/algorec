@@ -45,3 +45,15 @@ py_test(
         "@pypi//pytest",
     ],
 )
+
+py_test(
+    name = "test_synthetic",
+    size = "medium",
+    srcs = ["test_synthetic.py"],
+    deps = [
+        "//steerrec:assembler",
+        "//steerrec:registry",
+        "//steerrec:synthetic",
+        "@pypi//pytest",
+    ],
+)
