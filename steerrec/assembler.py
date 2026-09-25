@@ -28,7 +28,9 @@ from steerrec.registry import Registry
 from steerrec.targets import Bound, BoundKind, compute_bounds, dedupe_pool, unsteered_page
 
 SLACK_TOL = 1e-6
-# Stage 2 breaks clarity ties by relevance; this weight keeps relevance strictly secondary.
+# Stage 2 adds this weight times relevance to its objective, so equally clear pages are
+# ranked by relevance. It is a weighted sum, not a strict lexicographic stage: a clarity
+# difference smaller than CLARITY_TIE_BREAK * (relevance difference) goes to relevance.
 CLARITY_TIE_BREAK = 1e-4
 
 log = logging.getLogger(__name__)
@@ -77,8 +79,10 @@ def assemble(
 ) -> Page:
     """Build one steered page from `pool` (plan Steps 13-17).
 
-    `time_limit_s` is one wall-clock budget for all solver stages together. Each
-    stage gets whatever is left. If a stage runs out of time or fails, the page
+    `time_limit_s` is one wall-clock budget, starting when `assemble` is called and
+    covering model building and all solver stages; each stage gets whatever is left.
+    The greedy fallback is not bounded by it (measured ~20 ms at 300 items, ~60 ms
+    at 1,000). If a stage runs out of time or fails, the page
     from the previous stage is used (still slack-minimal after stage 0); only a
     stage-0 failure falls back to the greedy page. The plan's 50 ms assumed stages
     take "a few ms"; measured on a 300-item pool they take ~20-150 ms, and a
@@ -86,6 +90,7 @@ def assemble(
     latency budget, so the default favors optimal pages; `hit_time_limit` reports
     any early stop.
     """
+    deadline = time.perf_counter() + time_limit_s  # covers model building too
     # Canonical order: HiGHS resolves exact ties by variable order, so without this the
     # page could change when the caller shuffles the same pool.
     pool = sorted(dedupe_pool(pool), key=lambda it: (-it.p, it.video_id))
@@ -97,7 +102,7 @@ def assemble(
     if not bounds:  # s = 0 everywhere: the page is exactly U0.
         return Page(items=list(u0), unsteered=u0, bounds=[], shortfalls=_shortfalls(u0, bounds, page_size))
 
-    chosen, hit_limit = _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver)
+    chosen, hit_limit = _solve_ilp(pool, bounds, registry, page_size, delta, deadline, solver)
     used_fallback = chosen is None
     if used_fallback:
         chosen = _swap_greedy(pool, u0, bounds, registry, page_size)
@@ -116,7 +121,7 @@ def assemble(
 # --- ILP -------------------------------------------------------------------------
 
 
-def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -> tuple[Optional[list[Item]], bool]:
+def _solve_ilp(pool, bounds, registry, page_size, delta, deadline, solver) -> tuple[Optional[list[Item]], bool]:
     """Stages 0-2. Returns (chosen items, or None if stage 0 gives no usable answer;
     whether the solve ran out of time).
 
@@ -175,10 +180,9 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -
             row[idxs] = 1
             add(row, -np.inf, 1)
 
-    deadline = time.perf_counter() + time_limit_s
     limited = False
 
-    def run(objective, extra_rows=(), extra_lo=(), extra_hi=(), ub=None):
+    def run(objective, extra_rows=(), extra_lo=(), extra_hi=(), ub=None, exact=False):
         """One solver stage. Returns x, or None if out of time or the solver failed."""
         nonlocal limited
         remaining = deadline - time.perf_counter()
@@ -193,7 +197,9 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -
                 integrality=integrality,
                 bounds=vb,
                 constraints=[LinearConstraint(A, lo + list(extra_lo), hi + list(extra_hi))],
-                options={"time_limit": remaining},
+                # Stage 0 must be truly slack-minimal, since later stages cap slack at its
+                # value; HiGHS's default relative gap (1e-4) would let it stop short.
+                options={"time_limit": remaining, **({"mip_rel_gap": 0.0} if exact else {})},
             )
         except Exception:  # noqa: BLE001 - only the solver call is guarded; model-building bugs still raise
             log.warning("milp stage failed; using the previous stage's page", exc_info=True)
@@ -214,7 +220,7 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -
     for j, b in enumerate(bounds):
         c0[n + j] = registry[b.dim_id].priority
     c0[i_card] = 1.0 + sum(registry[b.dim_id].priority for b in bounds)
-    x0 = run(c0)
+    x0 = run(c0, exact=True)
     if x0 is None:
         return None, limited
     slack_cap = np.concatenate([np.ones(n), x0[n:] + SLACK_TOL])
