@@ -15,10 +15,10 @@ This is a minimal, readable slice meant for understanding the core idea, with no
 
 ## Current state
 
-- **Milestone / round**: M1 round 2 fixed; M2 round 1 fixed; M3 implemented. Next is one combined fresh review: M1 round 3, M2 round 2, M3 round 1
-- **Last green commit**: `b949a8e` (+ README wording fix)
+- **Milestone / round**: M1 SHIP (round 3); M3 SHIP (round 1, minors fixed); M2 round 2 ITERATE → fixed; M2 round 3 (final, cap) next
+- **Last green commit**: `21b89fc`
 - **Waiting on**: nothing
-- **Next action**: combined review of `92720d7..HEAD`, then publish the change artifact
+- **Next action**: M2 round 3 review of `701b278..HEAD`, then publish the change artifact
 
 ## Milestones
 
@@ -29,7 +29,7 @@ This is a minimal, readable slice meant for understanding the core idea, with no
     3. For s ≠ 0, pushed-up target `t ≥ u` and pushed-down target `t ≤ ū` (exclusive share), both monotone in |s|, with `T_hi = max(T_max, u)` and `T_lo = min(T_min, ū)`.
     4. Exclusive mass `e_d,i = q_d,i · Π_{k∈D⁺}(1 − q_k,i)`.
     5. s = 0 gives no dimension constraints.
-  - Review: round 1 ITERATE (0/1/7/3) → fixed; round 2 ITERATE (0/1/4/3) → fixed (see Build review log)
+  - Review: round 1 ITERATE (0/1/7/3) → fixed; round 2 ITERATE (0/1/4/3) → fixed; round 3 **SHIP** (0/0/0/1, nit fixed)
 - [ ] **M2 — Assembler ILP + shortfall** (plan Steps 15, 17)
   - Acceptance:
     1. Stage 0 minimizes weighted slack. Stage 1 maximizes relevance with slack capped at σ*. Stage 2 maximizes clarity `Σ_{d∈D⁺} q(q−0.5)` subject to relevance ≥ (1−δ)·R₁.
@@ -39,13 +39,13 @@ This is a minimal, readable slice meant for understanding the core idea, with no
     5. At s = 0 the page equals `U0`.
     6. Steered items (those not in `U0`) sit at evenly spaced positions.
     7. The fallback respects the creator rule and reports any remaining violation as shortfall.
-  - Review: round 1 ITERATE (0/4/5/2) → fixed (see Build review log)
-- [ ] **M3 — Synthetic catalog + demo + README** (plan criterion 1 shape)
+  - Review: round 1 ITERATE (0/4/5/2) → fixed; round 2 ITERATE (0/3/1/3) → fixed; round 3 pending
+- [x] **M3 — Synthetic catalog + demo + README** (plan criterion 1 shape)
   - Acceptance:
     1. `bazel run //steerrec:demo` prints pages and shares for a slider sweep on a seeded synthetic pool.
     2. A sweep test shows mean shares monotone within ε = 0.03 across 11 slider points.
     3. The README explains the idea and maps the code to plan steps.
-  - Review: not started
+  - Review: round 1 **SHIP** (0/0/3/2); minors and nits fixed
 
 ## Research notes
 
@@ -79,6 +79,9 @@ This is a minimal, readable slice meant for understanding the core idea, with no
 - **Missing score = 0**: `Item.q_of` treats a dimension the item has no score for as q = 0 ("not that kind"). This is recorded rather than enforced (M1 round 2, minor 3). In the full system, every item is scored for every registered dimension before it can be retrieved (plan Step 23), so this only affects hand-built fixtures. Misspelled keys are still rejected by `check_scores`.
 - **Stage 2 is a step at s ≠ 0** (demo finding, confirmed by the M2 reviewer): the clarity objective isn't scaled by |s|, so at δ = 0.02 any s ≠ 0 can already swap items. On the seed-0 pool that's 4 swaps at s = −0.2, the same as at s = −1. On 50 random pools the page differed from U0 at s = 1e-6 in 50/50 cases, and mean edu share jumped 0.418 → 0.501 from s = 0 to 0.1, about 30% of the whole sweep's range. Kept as the plan specifies. Scaling δ by |s|, or skipping stage 2 when the stage-1 page equals U0, is a candidate for the next design pass.
 - **Stage-2 tie-break**: a 1e-4·p term in the stage-2 objective breaks clarity ties by relevance (M2 round 1, major 2). This is a small addition to the plan's objective, not a change to what it optimizes.
+- **Never below neutral** (combined review, M2 major 1): hard constraints keep a pushed-up dimension at or above U0's mass and a pushed-down one at or below U0's exclusive mass, in the ILP and in the greedy. The plan's Step 14 promises this, but its Step 17 stage 0 (a weighted slack sum) does not enforce it by itself. That is a design finding for the plan text; the code implements the promise.
+- **Canonical pool order**: the pool is sorted by (−p, video_id) before the ILP, so exact ties don't depend on caller order.
+- **Stage-1 failure**: serve the better of the stage-0 page and the greedy page (by weighted violation, then relevance), since stage 0 ignores relevance.
 - **Page ordering**: steered item j goes to 1-based position floor((j + 0.5)·n/k + 0.5), which reproduces the plan's "2, 5, 8 for 3 items".
 - **Left side flat on the demo pool**: the neutral page is already 0.69 light, above `T_max` = 0.6, so `max(T_max, u)` leaves no target to push toward. This is by design (pushing never lowers a target), and the README explains it.
 - **Fallback swap-greedy** considers every (page item, candidate) pair, not only the lowest-p page item. Fixing the removal to the lowest-p item can stall as soon as that item is itself a steered one.
@@ -137,4 +140,25 @@ The round-2 fixes are re-reviewed as **M1 round 3** by the same fresh reviewer t
 | minor | Fallback slower than the budget it rescues | Fixed in `bb6ba10` (incremental totals: 100 → 20 ms at n = 300, 332 → 63 ms at n = 1,000; equivalence test against the naive reference) |
 | nit | M2 acceptance item 4 contradicted the Step 15 finding; stale "Next action" | Fixed in this build-log update |
 | nit | "medium" test size warning | Fixed in `b949a8e` |
+
+### Combined review: M1 round 3 · M2 round 2 · M3 round 1
+
+**Reviewed**: `92720d7..701b278` · **Verdicts**: M1 0/0/0/1 → **SHIP** · M2 0/3/1/3 → ITERATE · M3 0/0/3/2 → **SHIP**
+
+| Milestone | Severity | Finding | Action |
+|---|---|---|---|
+| M1 | nit | `validate_control` accepts "0.5" / True | Fixed in `839b5a5` |
+| M2 | major | A page with shortfall can go below neutral (stage 0 trades pushed-up mass for pushed-down slack) | Fixed in `67edb7f` (hard not-worse-than-U0 constraints in ILP and greedy; minimal case plus 30-seed property test) |
+| M2 | major | A stage-1 failure serves the relevance-blind stage-0 page (mean p 0.40 vs greedy 0.78) | Fixed in `716a00d` (better of stage 0 and greedy; test asserts relevance) |
+| M2 | major | Page depends on pool order with tied scores (15/120 pages) | Fixed in `001cae3` (sort before the model; shuffle test fails on 8/20 seeds without the fix) |
+| M2 | minor | Budget excludes model building; fallback unbounded | Fixed in `59b4f1a` (clock starts at the call; fallback cost documented) |
+| M2 | nit | Tie-break comment overclaims | Fixed in `59b4f1a` (reworded) |
+| M2 | nit | Stage 0 solved only to the 1e-4 MIP gap | Fixed in `59b4f1a` (`mip_rel_gap = 0` for stage 0) |
+| M2 | nit | Timing-dependent `not hit_time_limit` asserts; ~25 s test vs 60 s small timeout | Not changed: the margin is large (~70 ms used of 2 s). Revisit if CI is slow |
+| M3 | minor | README overstated the guarantee | Fixed in `21b89fc` (the guarantee now holds and is explained) |
+| M3 | minor | Synthetic criterion test never had active left bounds; 21 points instead of 11; wrong left-side quantity | Fixed in `d49ab67` |
+| M3 | minor | README/BUILDING details (fallback, flat-left reason, "tie-break") | Fixed in `21b89fc` |
+| M3 | nit | Sweep excerpt dropped rows silently | Fixed in `21b89fc` |
+| M3 | nit | Demo hard-codes "top-10", misleading fallback text, duplicate srcs | Fixed in `f77a4d8` |
+
 
