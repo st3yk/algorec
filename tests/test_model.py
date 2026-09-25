@@ -28,6 +28,33 @@ def test_control_is_clamped_and_unknown_dims_rejected():
         DEFAULT_REGISTRY.validate_control({"calm": 0.5})
 
 
+def test_nan_control_is_rejected_not_clamped_to_one():
+    with pytest.raises(ValueError):
+        DEFAULT_REGISTRY.validate_control({EDUCATIONAL: float("nan")})
+    assert DEFAULT_REGISTRY.validate_control({EDUCATIONAL: float("inf")}) == {EDUCATIONAL: 1.0}
+
+
+def test_duplicate_dimension_ids_rejected():
+    with pytest.raises(ValueError):
+        Registry([Dimension("e", t_max=0.6), Dimension("e", t_max=0.9)])
+
+
+def test_unknown_score_keys_rejected():
+    with pytest.raises(ValueError):
+        DEFAULT_REGISTRY.check_scores({"educationl": 0.5})
+    DEFAULT_REGISTRY.check_scores({EDUCATIONAL: 0.5, LIGHT: 0.1})
+
+
+def test_item_scores_are_read_only_and_items_hashable():
+    scores = {EDUCATIONAL: 0.5}
+    it = Item("v", "c", 0.5, q=scores)
+    scores[EDUCATIONAL] = 0.9  # mutating the caller's dict doesn't leak in
+    assert it.q_of(EDUCATIONAL) == 0.5
+    with pytest.raises(TypeError):
+        it.q[EDUCATIONAL] = 0.9
+    hash(it)
+
+
 def test_single_slider_mapping():
     assert single_slider(0.4) == {EDUCATIONAL: 0.4, LIGHT: -0.4}
 

@@ -5,6 +5,7 @@ calibrated dimension heads (plan Step 7). In this slice they are given directly.
 """
 
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Mapping
 
 
@@ -24,9 +25,11 @@ class Item:
     video_id: str
     creator_id: str
     p: float
-    q: Mapping[str, float] = field(default_factory=dict)
+    q: Mapping[str, float] = field(default_factory=dict, hash=False)
 
     def __post_init__(self) -> None:
+        # Read-only copy, so scores can't change after validation.
+        object.__setattr__(self, "q", MappingProxyType(dict(self.q)))
         if not 0.0 <= self.p <= 1.0:
             raise ValueError(f"{self.video_id}: p={self.p} is not a probability")
         for dim_id, value in self.q.items():

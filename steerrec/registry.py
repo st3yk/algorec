@@ -4,6 +4,7 @@ Adding a dimension means adding a registry entry (plus, in the full system, a
 rubric, gold labels and a scoring head). Everything downstream iterates over it.
 """
 
+import math
 from dataclasses import dataclass
 from typing import Iterable, Mapping
 
@@ -39,7 +40,11 @@ class Registry:
     """An ordered, immutable set of dimensions keyed by id."""
 
     def __init__(self, dimensions: Iterable[Dimension]):
-        self._dims = {d.dim_id: d for d in dimensions}
+        self._dims: dict[str, Dimension] = {}
+        for d in dimensions:
+            if d.dim_id in self._dims:
+                raise ValueError(f"duplicate dimension id: {d.dim_id}")
+            self._dims[d.dim_id] = d
         if not self._dims:
             raise ValueError("registry needs at least one dimension")
 
@@ -53,11 +58,23 @@ class Registry:
         return iter(self._dims.values())
 
     def validate_control(self, control: Mapping[str, float]) -> dict[str, float]:
-        """Clamp each slider to [-1, 1]; reject unknown dimensions (plan Step 21)."""
+        """Clamp each slider to [-1, 1]; reject unknown dimensions and NaN (plan Step 21)."""
         unknown = set(control) - set(self._dims)
         if unknown:
             raise ValueError(f"unknown dimension(s) in control: {sorted(unknown)}")
-        return {dim_id: max(-1.0, min(1.0, float(s))) for dim_id, s in control.items()}
+        out = {}
+        for dim_id, s in control.items():
+            s = float(s)
+            if math.isnan(s):  # max/min would silently turn NaN into +1 ("maximum learning")
+                raise ValueError(f"control[{dim_id}] is NaN")
+            out[dim_id] = max(-1.0, min(1.0, s))
+        return out
+
+    def check_scores(self, q: Mapping[str, float]) -> None:
+        """Reject score keys the registry doesn't know: a typo would silently read as q = 0."""
+        unknown = set(q) - set(self._dims)
+        if unknown:
+            raise ValueError(f"unknown dimension(s) in item scores: {sorted(unknown)}")
 
 
 EDUCATIONAL = "educational"
