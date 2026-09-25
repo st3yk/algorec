@@ -119,8 +119,8 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -
     whether the solve ran out of time).
 
     Variables: x_i (binary, one per pool item), then one slack per bound, then
-    the cardinality slack. Every stage shares the same constraints, so x = 0
-    with all-slack is always feasible.
+    the cardinality slack. Every stage shares the same constraints, and U0 always
+    satisfies them, so every stage is feasible.
     """
     n, nb = len(pool), len(bounds)
     nvar = n + nb + 1
@@ -151,6 +151,18 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -
         else:  # sum e x - slack <= mass
             row[n + j] = -1
             add(row, -np.inf, b.mass)
+    # Never worse than neutral (plan Step 14's promise), even when a bound can't be met:
+    # a pushed-up dimension keeps at least U0's mass, a pushed-down one at most U0's.
+    # U0 itself satisfies these (and is a max-cardinality creator-respecting page), so
+    # the model stays feasible. Without them, stage 0 could trade pushed-up mass away
+    # to shrink the pushed-down slack and serve a page *less* educational than neutral.
+    for b in bounds:
+        row = np.zeros(nvar)
+        row[:n] = [b.coefficient(it) for it in pool]
+        if b.kind is BoundKind.LOWER_TOTAL:
+            add(row, b.reference * page_size - SLACK_TOL, np.inf)
+        else:
+            add(row, -np.inf, b.reference * page_size + SLACK_TOL)
     # Creator rule (hard): at most one item per creator.
     by_creator: dict[str, list[int]] = {}
     for i, it in enumerate(pool):
@@ -245,7 +257,8 @@ def _gap(b: Bound, items) -> float:
 
 def _swap_greedy(pool, u0, bounds, registry, page_size) -> list[Item]:
     """Start from U0; repeatedly make the single swap that most reduces the bound
-    violation (ties: higher resulting relevance), keeping one item per creator.
+    violation (ties: higher resulting relevance), keeping one item per creator and
+    never moving a dimension past U0 in the wrong direction.
     Stops when the bounds hold or no swap helps. Whatever is left is reported as
     shortfall by the caller.
 
@@ -256,6 +269,12 @@ def _swap_greedy(pool, u0, bounds, registry, page_size) -> list[Item]:
     coef = {it.video_id: [b.coefficient(it) for b in bounds] for it in pool}
     lower = [b.kind is BoundKind.LOWER_TOTAL for b in bounds]
     masses = [b.mass for b in bounds]
+    refs = [b.reference * page_size for b in bounds]
+
+    def not_worse_than_neutral(totals):
+        return all(
+            (t >= r - SLACK_TOL) if lo else (t <= r + SLACK_TOL) for t, r, lo in zip(totals, refs, lower)
+        )
 
     def violation(totals):
         return sum(
@@ -282,6 +301,8 @@ def _swap_greedy(pool, u0, bounds, registry, page_size) -> list[Item]:
                     continue
                 in_c = coef[cand.video_id]
                 new_totals = [t - o + i for t, o, i in zip(totals, out_c, in_c)]
+                if not not_worse_than_neutral(new_totals):
+                    continue
                 v = violation(new_totals)
                 if v >= current - SLACK_TOL:
                     continue

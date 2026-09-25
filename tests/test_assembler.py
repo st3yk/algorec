@@ -28,6 +28,10 @@ def random_pool(rng, n, n_creators, edu_bias=0.0):
     return items
 
 
+def failing_solver(*args, **kwargs):
+    raise RuntimeError("solver unavailable")
+
+
 def gap(bound, items):
     total = sum(bound.coefficient(it) for it in items)
     return max(0.0, bound.mass - total) if bound.kind is BoundKind.LOWER_TOTAL else max(0.0, total - bound.mass)
@@ -204,11 +208,46 @@ def test_stage2_breaks_clarity_ties_by_relevance_regardless_of_pool_order():
         assert kept == ["l0"]
 
 
+# --- never worse than neutral, even with shortfall (plan Step 14) ----------------------
+
+
+def test_shortfall_page_is_never_below_neutral_minimal_case():
+    # A is educational-ish but very light; N is less educational and not light. At s = +1 both
+    # bounds are unmeetable. Trading A for N would shrink the light gap but drop edu below U0.
+    a = Item("A", "cA", 0.9, q={EDUCATIONAL: 0.5, LIGHT: 0.9})
+    n = Item("N", "cN", 0.5, q={EDUCATIONAL: 0.3, LIGHT: 0.0})
+    for solver in (milp, failing_solver):
+        page = assemble([a, n], single_slider(1.0), DEFAULT_REGISTRY, 1, solver=solver)
+        assert [it.video_id for it in page.items] == ["A"]
+        assert {sf.dim_id for sf in page.shortfalls} == {EDUCATIONAL, LIGHT}
+
+
+@pytest.mark.parametrize("seed", range(30))
+def test_every_page_stays_on_the_slider_side_of_neutral(seed):
+    # Pools where the relevant items are light and only mildly educational, so shortfall is common.
+    rng = random.Random(seed)
+    pool = [
+        Item(f"v{i:03d}", f"c{rng.randrange(40)}", rng.random(),
+             q={EDUCATIONAL: rng.uniform(0.0, 0.5), LIGHT: rng.uniform(0.3, 1.0)})
+        for i in range(60)
+    ]
+    for s in (-1.0, -0.5, 0.5, 1.0):
+        for solver in (milp, failing_solver):
+            page = assemble(pool, single_slider(s), DEFAULT_REGISTRY, P, solver=solver)
+            for b in page.bounds:
+                realized = b.realized(page.items)
+                if b.kind is BoundKind.LOWER_TOTAL:
+                    assert realized >= b.reference - 1e-6
+                else:
+                    assert realized <= b.reference + 1e-6
+
+
 # --- optimality against brute force (stages 0-2) ------------------------------------
 
 
 def brute_force(pool, bounds, page_size, delta):
-    """Enumerate every creator-respecting page; return (min slack, best relevance, best clarity)."""
+    """Enumerate every creator-respecting page that is not worse than neutral;
+    return (min slack, best relevance, best clarity)."""
     pushed_up = bounds[0].pushed_up if bounds else ()
     w_card = 1.0 + len(bounds)
     best = []
@@ -216,6 +255,12 @@ def brute_force(pool, bounds, page_size, delta):
         for combo in itertools.combinations(pool, k):
             if len({it.creator_id for it in combo}) < k:
                 continue
+            if not all(
+                (b.realized(combo) >= b.reference - 1e-9) if b.kind is BoundKind.LOWER_TOTAL
+                else (b.realized(combo) <= b.reference + 1e-9)
+                for b in bounds
+            ):
+                continue  # never worse than neutral
             slack = sum(gap(b, combo) for b in bounds) + w_card * (page_size - k)
             rel = sum(it.p for it in combo)
             clar = sum(it.q_of(d) * (it.q_of(d) - 0.5) for it in combo for d in pushed_up)
@@ -370,10 +415,6 @@ def test_budget_is_shared_across_stages():
 
 
 # --- fallback ----------------------------------------------------------------------
-
-
-def failing_solver(*args, **kwargs):
-    raise RuntimeError("solver unavailable")
 
 
 @pytest.mark.parametrize("seed", range(15))
