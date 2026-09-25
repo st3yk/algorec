@@ -1,7 +1,7 @@
 import pytest
 
 from steerrec.assembler import assemble
-from steerrec.registry import DEFAULT_REGISTRY, EDUCATIONAL, LIGHT, single_slider
+from steerrec.registry import DEFAULT_REGISTRY, EDUCATIONAL, LIGHT, Dimension, Registry, single_slider
 from steerrec.synthetic import Kind, make_catalog
 
 P = 10
@@ -30,28 +30,53 @@ def test_catalog_kinds_and_scores_are_sensible():
     assert mean(Kind.LIGHT, lambda it: it.p) > mean(Kind.EDUCATIONAL, lambda it: it.p) + 0.1
 
 
-def test_criterion_1_mean_share_is_monotone_over_synthetic_users():
-    """Plan criterion 1 on synthetic data: 11 slider points, mean over users (catalog seeds),
-    non-shortfall pages only. m_edu must not fall and pure-light share must not rise by
-    more than EPS from one point to the next, for the plan's default delta = 0.02."""
+# With the default end points, the synthetic users' neutral pages are already lighter than
+# T_max(light) = 0.6 and less purely educational than T_min(edu) = 0.1, so the left-side
+# bounds never bite. The "left_active" registry moves those end points so they do.
+REGISTRIES = {
+    "default": DEFAULT_REGISTRY,
+    "left_active": Registry([Dimension(EDUCATIONAL, t_min=0.01), Dimension(LIGHT, t_max=0.9)]),
+}
+
+
+@pytest.mark.parametrize("registry_name", sorted(REGISTRIES))
+def test_criterion_1_mean_share_is_monotone_over_synthetic_users(registry_name):
+    """Plan criterion 1 on synthetic data: 11 slider points (step 0.2), mean over 12 users
+    (catalog seeds), non-shortfall pages only. For each side, the pushed-up dimension's total
+    share must not fall, and the pushed-down dimension's pure share must not rise, by more
+    than EPS between neighbouring points."""
+    registry = REGISTRIES[registry_name]
     catalogs = [make_catalog(150, n_creators=80, seed=seed) for seed in range(12)]
-    m_edu, x_light = [], []
-    for k in range(-10, 11):
-        ms, xs = [], []
+    points = [k / 10 for k in range(-10, 11, 2)]
+    mean = {}
+    for s in points:
+        rows = []
         for cat in catalogs:
-            page = assemble(cat.items, single_slider(k / 10), DEFAULT_REGISTRY, P)
+            page = assemble(cat.items, single_slider(s), registry, P)
+            assert not page.used_fallback and not page.hit_time_limit
             if page.shortfalls:
                 continue
-            ms.append(sum(it.q_of(EDUCATIONAL) for it in page.items) / P)
-            xs.append(sum(it.q_of(LIGHT) * (1 - it.q_of(EDUCATIONAL)) for it in page.items) / P)
-        assert len(ms) >= 8
-        m_edu.append(sum(ms) / len(ms))
-        x_light.append(sum(xs) / len(xs))
-    for a, b in zip(m_edu, m_edu[1:]):
-        assert b >= a - EPS, m_edu
-    for a, b in zip(x_light, x_light[1:]):
-        assert b <= a + EPS, x_light
-    assert m_edu[-1] - m_edu[10] >= 0.2  # full right moves edu well past neutral
+            q = lambda it, d: it.q_of(d)  # noqa: E731
+            rows.append({
+                "edu": sum(q(it, EDUCATIONAL) for it in page.items) / P,
+                "light": sum(q(it, LIGHT) for it in page.items) / P,
+                "pure_edu": sum(q(it, EDUCATIONAL) * (1 - q(it, LIGHT)) for it in page.items) / P,
+                "pure_light": sum(q(it, LIGHT) * (1 - q(it, EDUCATIONAL)) for it in page.items) / P,
+            })
+        assert len(rows) >= 8, f"too many shortfall pages at s={s}"
+        mean[s] = {k: sum(r[k] for r in rows) / len(rows) for k in rows[0]}
+    right = [s for s in points if s >= 0]
+    left = [s for s in reversed(points) if s <= 0]  # from 0 toward -1
+    for a, b in zip(right, right[1:]):
+        assert mean[b]["edu"] >= mean[a]["edu"] - EPS
+        assert mean[b]["pure_light"] <= mean[a]["pure_light"] + EPS
+    for a, b in zip(left, left[1:]):
+        assert mean[b]["light"] >= mean[a]["light"] - EPS
+        assert mean[b]["pure_edu"] <= mean[a]["pure_edu"] + EPS
+    assert mean[1.0]["edu"] - mean[0.0]["edu"] >= 0.2
+    if registry_name == "left_active":
+        assert mean[-1.0]["light"] - mean[0.0]["light"] >= 0.1
+        assert mean[0.0]["pure_edu"] - mean[-1.0]["pure_edu"] >= 0.02
 
 
 if __name__ == "__main__":
