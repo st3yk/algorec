@@ -1,3 +1,4 @@
+load("@rules_python//python:py_binary.bzl", "py_binary")
 load("@rules_python//python:py_library.bzl", "py_library")
 
 package(default_visibility = ["//visibility:public"])
@@ -43,4 +44,22 @@ py_library(
         ":items",
         ":registry",
     ],
+)
+
+py_library(
+    name = "demo_lib",
+    srcs = ["demo.py"],
+    deps = [
+        ":assembler",
+        ":registry",
+        ":synthetic",
+        ":targets",
+    ],
+)
+
+py_binary(
+    name = "demo",
+    srcs = ["demo.py"],
+    main = "demo.py",
+    deps = [":demo_lib"],
 )

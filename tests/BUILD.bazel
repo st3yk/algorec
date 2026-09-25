@@ -57,3 +57,16 @@ py_test(
         "@pypi//pytest",
     ],
 )
+
+py_test(
+    name = "test_demo",
+    size = "small",
+    srcs = ["test_demo.py"],
+    deps = [
+        "//steerrec:assembler",
+        "//steerrec:demo_lib",
+        "//steerrec:registry",
+        "//steerrec:synthetic",
+        "@pypi//pytest",
+    ],
+)
