@@ -23,3 +23,15 @@ py_library(
         ":registry",
     ],
 )
+
+py_library(
+    name = "assembler",
+    srcs = ["assembler.py"],
+    deps = [
+        ":items",
+        ":registry",
+        ":targets",
+        "@pypi//numpy",
+        "@pypi//scipy",
+    ],
+)
