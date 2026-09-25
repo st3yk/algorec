@@ -32,8 +32,10 @@ class Dimension:
     def __post_init__(self) -> None:
         if not 0.0 <= self.t_min <= self.t_max <= 1.0:
             raise ValueError(f"{self.dim_id}: need 0 <= t_min <= t_max <= 1")
-        if self.priority < 1.0:
-            raise ValueError(f"{self.dim_id}: priority must be >= 1")
+        if not (math.isfinite(self.priority) and self.priority >= 1.0):
+            raise ValueError(f"{self.dim_id}: priority must be finite and >= 1 (it weights stage-0 slack)")
+        if not 0.0 <= self.tau <= 1.0:
+            raise ValueError(f"{self.dim_id}: tau must be in [0, 1]")
 
 
 class Registry:

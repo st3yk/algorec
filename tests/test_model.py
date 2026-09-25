@@ -18,8 +18,12 @@ def test_missing_dimension_score_counts_as_zero():
 def test_dimension_validates_endpoints_and_priority():
     with pytest.raises(ValueError):
         Dimension("d", t_max=0.1, t_min=0.2)
-    with pytest.raises(ValueError):
-        Dimension("d", priority=0.5)
+    for bad in (0.5, float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            Dimension("d", priority=bad)
+    for bad in (-0.1, 7.0):
+        with pytest.raises(ValueError):
+            Dimension("d", tau=bad)
 
 
 def test_control_is_clamped_and_unknown_dims_rejected():
