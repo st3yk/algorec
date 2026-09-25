@@ -203,6 +203,31 @@ def test_mean_realized_share_is_monotone_across_slider_points(sign):
     assert mean_x[0] - mean_x[-1] >= 0.05
 
 
+# --- solver time limit ---------------------------------------------------------------
+
+
+def test_time_limited_stage_is_reported_not_silent():
+    rng = random.Random(0)
+    pool = random_pool(rng, 300, 150)
+    page = assemble(pool, single_slider(0.5), DEFAULT_REGISTRY, P, time_limit_s=1e-4)
+    assert page.hit_time_limit or page.used_fallback
+    reported = {sf.dim_id: sf.amount for sf in page.shortfalls if sf.kind is ShortfallKind.BOUND}
+    for b in page.bounds:
+        g = gap(b, page.items)
+        assert g <= SLACK_TOL or reported[b.dim_id] == pytest.approx(g)
+
+
+def test_default_time_limit_solves_a_300_item_pool_to_optimality():
+    # Regression: with the plan's 50 ms per stage, stage 1 stopped early on this pool and
+    # returned a page with mean p 0.75 instead of 0.85.
+    from steerrec.synthetic import make_catalog
+
+    cat = make_catalog(300, seed=0)
+    page = assemble(cat.items, single_slider(0.5), DEFAULT_REGISTRY, P)
+    assert not page.hit_time_limit and not page.used_fallback
+    assert sum(it.p for it in page.items) / P > 0.84
+
+
 # --- fallback ----------------------------------------------------------------------
 
 

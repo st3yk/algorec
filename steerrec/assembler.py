@@ -47,6 +47,7 @@ class Page:
     bounds: list[Bound]
     shortfalls: list[Shortfall] = field(default_factory=list)
     used_fallback: bool = False
+    hit_time_limit: bool = False            # a solver stage stopped early; the page may be suboptimal
 
     @property
     def steered_ids(self) -> set[str]:
@@ -65,10 +66,17 @@ def assemble(
     registry: Registry,
     page_size: int = 10,
     delta: float = 0.02,
-    time_limit_s: float = 0.05,
+    time_limit_s: float = 2.0,
     solver: Solver = milp,
 ) -> Page:
-    """Build one steered page from `pool` (plan Steps 13-17)."""
+    """Build one steered page from `pool` (plan Steps 13-17).
+
+    `time_limit_s` applies per solver stage. The plan's 50 ms assumed each stage
+    takes "a few ms"; measured on a 300-item pool, stages take ~20-150 ms, and a
+    50 ms cap returned noticeably worse incumbents (see the build log). This slice
+    has no latency budget, so the default favors optimal pages; `hit_time_limit`
+    reports when a stage stopped early anyway.
+    """
     pool = dedupe_pool(pool)
     for item in pool:
         registry.check_scores(item.q)
@@ -78,9 +86,9 @@ def assemble(
     if not bounds:  # s = 0 everywhere: the page is exactly U0.
         return Page(items=list(u0), unsteered=u0, bounds=[], shortfalls=_shortfalls(u0, bounds, page_size))
 
-    chosen = None
+    chosen, hit_limit = None, False
     try:
-        chosen = _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver)
+        chosen, hit_limit = _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver)
     except Exception:  # noqa: BLE001 — any solver failure falls back; the page must still be served
         chosen = None
     used_fallback = chosen is None
@@ -94,14 +102,16 @@ def assemble(
         bounds=bounds,
         shortfalls=_shortfalls(ordered, bounds, page_size),
         used_fallback=used_fallback,
+        hit_time_limit=hit_limit,
     )
 
 
 # --- ILP -------------------------------------------------------------------------
 
 
-def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -> Optional[list[Item]]:
-    """Stages 0-2. Returns the chosen items, or None if the solver gives no usable answer.
+def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -> tuple[Optional[list[Item]], bool]:
+    """Stages 0-2. Returns (chosen items or None if the solver gives no usable answer,
+    whether any stage stopped at its time limit).
 
     Variables: x_i (binary, one per pool item), then one slack per bound, then
     the cardinality slack. Every stage shares the same constraints, so x = 0
@@ -147,6 +157,7 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -
             add(row, -np.inf, 1)
 
     options = {"time_limit": time_limit_s}
+    limited = False
 
     def run(objective, extra_rows=(), extra_lo=(), extra_hi=(), ub=None):
         A = np.vstack(rows + list(extra_rows))
@@ -161,6 +172,9 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -
         # status 0 = optimal; 1 = limit reached, still usable if an incumbent exists.
         if getattr(res, "x", None) is None or res.status not in (0, 1):
             return None
+        if res.status == 1:
+            nonlocal limited
+            limited = True
         return np.asarray(res.x)
 
     # Stage 0: minimize weighted slack. Cardinality outweighs every bound combined
@@ -171,7 +185,7 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -
     c0[i_card] = 1.0 + sum(registry[b.dim_id].priority for b in bounds)
     x0 = run(c0)
     if x0 is None:
-        return None
+        return None, limited
     slack_cap = np.concatenate([np.ones(n), x0[n:] + SLACK_TOL])
 
     # Stage 1: maximize relevance with no more slack than stage 0 needed.
@@ -180,7 +194,7 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -
     c1[:n] = -p
     x1 = run(c1, ub=slack_cap)
     if x1 is None:
-        return None
+        return None, limited
     r1 = float(p @ _binary(x1[:n]))
 
     # Stage 2: prefer clear examples of pushed-up dimensions, losing at most delta of R1.
@@ -195,7 +209,7 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, time_limit_s, solver) -
         candidate = run(c2, [rel_row], [(1.0 - delta) * r1 - SLACK_TOL], [np.inf], ub=slack_cap)
         if candidate is not None:
             x2 = candidate
-    return [it for it, xi in zip(pool, _binary(x2[:n])) if xi]
+    return [it for it, xi in zip(pool, _binary(x2[:n])) if xi], limited
 
 
 def _binary(x: np.ndarray) -> np.ndarray:

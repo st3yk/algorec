@@ -41,6 +41,7 @@ py_test(
         "//steerrec:assembler",
         "//steerrec:items",
         "//steerrec:registry",
+        "//steerrec:synthetic",
         "//steerrec:targets",
         "@pypi//pytest",
     ],

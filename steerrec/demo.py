@@ -58,6 +58,8 @@ def render_page(s: float, page: Page, catalog: Catalog, page_size: int) -> str:
         lines.append(f"  SHORTFALL ({sf.kind.value}): {what} missed by {sf.amount:.2f} items")
     if page.used_fallback:
         lines.append("  (solver unavailable: greedy fallback page)")
+    if page.hit_time_limit:
+        lines.append("  (a solver stage hit its time limit: this page may be suboptimal)")
     return "\n".join(lines)
 
 
