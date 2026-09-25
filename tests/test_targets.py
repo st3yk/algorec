@@ -46,9 +46,24 @@ def test_unsteered_page_ties_are_deterministic():
     assert [it.video_id for it in unsteered_page(pool, 1)] == ["a"]
 
 
-def test_unsteered_page_is_independent_of_pool_order_with_duplicate_ids():
-    a1, a2 = Item("a", "c1", 0.5), Item("a", "c2", 0.5)
-    assert unsteered_page([a1, a2], 5) == unsteered_page([a2, a1], 5) == [a1]
+def test_identical_duplicates_are_kept_once():
+    a = Item("a", "c1", 0.5, q={EDUCATIONAL: 0.1})
+    assert unsteered_page([a, a, Item("b", "c2", 0.4)], 5) == [a, Item("b", "c2", 0.4)]
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        Item("a", "c2", 0.5, q={EDUCATIONAL: 0.1}),  # different creator
+        Item("a", "c1", 0.6, q={EDUCATIONAL: 0.1}),  # different p
+        Item("a", "c1", 0.5, q={EDUCATIONAL: 0.9}),  # different q
+    ],
+)
+def test_conflicting_duplicates_raise_in_either_order(other):
+    a = Item("a", "c1", 0.5, q={EDUCATIONAL: 0.1})
+    for pool in ([a, other], [other, a]):
+        with pytest.raises(ValueError):
+            unsteered_page(pool, 5)
 
 
 def test_unsteered_page_handles_small_and_empty_pools():
@@ -163,12 +178,25 @@ def test_dimension_at_zero_is_unconstrained_and_not_pushed_up():
     assert bounds[LIGHT].reference == pytest.approx(0.4 * 0.7)
 
 
-def test_bounds_reject_unknown_score_keys_and_oversized_u0():
+def test_bounds_reject_bad_inputs():
     with pytest.raises(ValueError):
         compute_bounds(single_slider(0.5), [Item("v", "c", 0.5, q={"educationl": 0.5})], DEFAULT_REGISTRY, P)
-    u0 = [Item(f"v{i}", f"c{i}", 0.5) for i in range(P + 1)]
-    with pytest.raises(ValueError):
-        compute_bounds(single_slider(0.5), u0, DEFAULT_REGISTRY, P)
+    with pytest.raises(ValueError):  # longer than the page
+        compute_bounds(single_slider(0.5), [Item(f"v{i}", f"c{i}", 0.5) for i in range(P + 1)], DEFAULT_REGISTRY, P)
+    with pytest.raises(ValueError):  # repeated item
+        compute_bounds(single_slider(0.5), [Item("v", "c", 0.5)] * 2, DEFAULT_REGISTRY, P)
+    with pytest.raises(ValueError):  # repeated creator
+        compute_bounds(single_slider(0.5), [Item("v", "c", 0.5), Item("w", "c", 0.5)], DEFAULT_REGISTRY, P)
+    with pytest.raises(ValueError):  # bool is not a page size
+        compute_bounds(single_slider(0.5), [], DEFAULT_REGISTRY, True)
+
+
+def test_bounds_follow_registry_order_not_control_order():
+    u0 = [Item(f"v{i}", f"c{i}", 0.5, q={EDUCATIONAL: 0.3, LIGHT: 0.4}) for i in range(P)]
+    a = compute_bounds({LIGHT: -0.5, EDUCATIONAL: 0.5}, u0, DEFAULT_REGISTRY, P)
+    b = compute_bounds({EDUCATIONAL: 0.5, LIGHT: -0.5}, u0, DEFAULT_REGISTRY, P)
+    assert a == b
+    assert [x.dim_id for x in a] == [EDUCATIONAL, LIGHT]
 
 
 def test_n_dimensions_use_the_same_formulas():

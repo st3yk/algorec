@@ -15,27 +15,43 @@ from steerrec.items import Item
 from steerrec.registry import Registry
 
 
+def dedupe_pool(pool: Sequence[Item]) -> list[Item]:
+    """One entry per video_id, in first-seen order.
+
+    The pool is a union of retrieval sources, so the same video can arrive more
+    than once. Identical repeats are dropped. A video_id that arrives with
+    different creator, p or q is an upstream bug; picking one copy would make
+    the result depend on pool order, so it raises instead.
+    """
+    seen: dict[str, Item] = {}
+    for item in pool:
+        prev = seen.get(item.video_id)
+        if prev is None:
+            seen[item.video_id] = item
+        elif prev != item:
+            raise ValueError(f"video {item.video_id} appears twice with different data: {prev} vs {item}")
+    return list(seen.values())
+
+
 def unsteered_page(pool: Sequence[Item], page_size: int) -> list[Item]:
     """U0: the top-`page_size` items by relevance, at most one per creator (Step 13).
 
     Greedy is exact here: taking the best item of each creator and then the
     top-P of those is the same as scanning by descending p and skipping repeats.
-    Ties are broken by (video_id, creator_id), and a video_id seen twice is kept
-    once, so the result doesn't depend on the pool's order.
+    Ties are broken by video_id, which is unique after `dedupe_pool`, so the
+    result doesn't depend on the pool's order.
     """
     if page_size < 0:
         raise ValueError("page_size must be >= 0")
     page: list[Item] = []
     creators: set[str] = set()
-    videos: set[str] = set()
-    for item in sorted(pool, key=lambda it: (-it.p, it.video_id, it.creator_id)):
+    for item in sorted(dedupe_pool(pool), key=lambda it: (-it.p, it.video_id)):
         if len(page) == page_size:
             break
-        if item.creator_id in creators or item.video_id in videos:
+        if item.creator_id in creators:
             continue
         page.append(item)
         creators.add(item.creator_id)
-        videos.add(item.video_id)
     return page
 
 
@@ -112,16 +128,20 @@ def compute_bounds(
         t_d = ubar_d - |s_d| * (ubar_d - min(T_min, ubar_d))   upper bound on exclusive share
     Dimensions at 0 are unconstrained, so s = 0 everywhere returns no bounds.
     """
-    if page_size <= 0:
-        raise ValueError("page_size must be > 0")
+    if type(page_size) is not int or page_size <= 0:
+        raise ValueError(f"page_size must be a positive int, got {page_size!r}")
     if len(u0) > page_size:
         raise ValueError(f"u0 has {len(u0)} items but page_size is {page_size}")
+    if len({it.video_id for it in u0}) < len(u0) or len({it.creator_id for it in u0}) < len(u0):
+        raise ValueError("u0 repeats a video or a creator; build it with unsteered_page()")
     for item in u0:
         registry.check_scores(item.q)
     control = registry.validate_control(control)
-    pushed_up = tuple(d for d, s in control.items() if s > 0)
+    # Registry order (not the control dict's order) keeps output and float products stable.
+    ordered = [(dim.dim_id, control[dim.dim_id]) for dim in registry if dim.dim_id in control]
+    pushed_up = tuple(d for d, s in ordered if s > 0)
     bounds: list[Bound] = []
-    for dim_id, s in control.items():
+    for dim_id, s in ordered:
         if s == 0:
             continue
         dim = registry[dim_id]

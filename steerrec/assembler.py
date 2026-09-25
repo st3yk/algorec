@@ -23,7 +23,7 @@ from scipy.optimize import LinearConstraint, milp
 
 from steerrec.items import Item
 from steerrec.registry import Registry
-from steerrec.targets import Bound, BoundKind, compute_bounds, unsteered_page
+from steerrec.targets import Bound, BoundKind, compute_bounds, dedupe_pool, unsteered_page
 
 SLACK_TOL = 1e-6
 
@@ -69,7 +69,7 @@ def assemble(
     solver: Solver = milp,
 ) -> Page:
     """Build one steered page from `pool` (plan Steps 13-17)."""
-    pool = _dedup_by_id(pool)
+    pool = dedupe_pool(pool)
     for item in pool:
         registry.check_scores(item.q)
     u0 = unsteered_page(pool, page_size)
@@ -273,14 +273,4 @@ def _shortfalls(items, bounds, page_size) -> list[Shortfall]:
             out.append(Shortfall(ShortfallKind.BOUND, gap, b.dim_id))
     if len(items) < page_size:
         out.append(Shortfall(ShortfallKind.CARDINALITY, float(page_size - len(items))))
-    return out
-
-
-def _dedup_by_id(pool: Sequence[Item]) -> list[Item]:
-    """Keep the first occurrence of each video_id (a video can't be on a page twice)."""
-    seen, out = set(), []
-    for it in pool:
-        if it.video_id not in seen:
-            seen.add(it.video_id)
-            out.append(it)
     return out
