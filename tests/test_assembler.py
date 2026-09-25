@@ -208,6 +208,23 @@ def test_stage2_breaks_clarity_ties_by_relevance_regardless_of_pool_order():
         assert kept == ["l0"]
 
 
+@pytest.mark.parametrize("seed", range(20))
+def test_page_does_not_depend_on_pool_order_even_with_tied_scores(seed):
+    # Scores rounded to one decimal, as quantized calibrated outputs would be: many exact ties.
+    rng = random.Random(seed)
+    pool = [
+        Item(f"v{i:03d}", f"c{rng.randrange(30)}", round(rng.random(), 1),
+             q={EDUCATIONAL: round(rng.random(), 1), LIGHT: round(rng.random(), 1)})
+        for i in range(60)
+    ]
+    shuffled = pool[:]
+    random.Random(seed + 1000).shuffle(shuffled)
+    for s in (-1.0, -0.5, 0.5, 1.0):
+        a = assemble(pool, single_slider(s), DEFAULT_REGISTRY, P)
+        b = assemble(shuffled, single_slider(s), DEFAULT_REGISTRY, P)
+        assert [it.video_id for it in a.items] == [it.video_id for it in b.items]
+
+
 # --- never worse than neutral, even with shortfall (plan Step 14) ----------------------
 
 

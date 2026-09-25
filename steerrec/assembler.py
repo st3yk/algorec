@@ -86,7 +86,9 @@ def assemble(
     latency budget, so the default favors optimal pages; `hit_time_limit` reports
     any early stop.
     """
-    pool = dedupe_pool(pool)
+    # Canonical order: HiGHS resolves exact ties by variable order, so without this the
+    # page could change when the caller shuffles the same pool.
+    pool = sorted(dedupe_pool(pool), key=lambda it: (-it.p, it.video_id))
     for item in pool:
         registry.check_scores(item.q)
     u0 = unsteered_page(pool, page_size)
