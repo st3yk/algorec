@@ -447,6 +447,29 @@ def test_stage1_failure_serves_a_relevant_page_not_the_relevance_blind_stage0_on
     assert sum(it.p for it in page.items) >= sum(it.p for it in greedy.items) - 1e-9
 
 
+def test_stage1_failure_prefers_the_stage0_page_when_greedy_stalls(monkeypatch):
+    # The other half of the comparison: when greedy can't meet the bounds but stage 0 did,
+    # stage 0's page must win even though greedy's page (U0 here) is more relevant.
+    import steerrec.assembler as asm
+
+    monkeypatch.setattr(asm, "_swap_greedy", lambda pool, u0, *a, **k: list(u0))
+    page = assemble(easy_pool(), single_slider(1.0), DEFAULT_REGISTRY, P, solver=ScriptedSolver({1: "raise"}))
+    assert page.shortfalls == []
+    assert page.steered_ids  # not U0
+
+
+def test_better_page_treats_violations_within_tolerance_as_equal():
+    from steerrec.assembler import SLACK_TOL, _better_page
+
+    edu_bound = compute_bounds({EDUCATIONAL: 1.0}, [Item("u", "cu", 0.9, q={EDUCATIONAL: 0.0})], DEFAULT_REGISTRY, 1)
+    # Both pages miss the edu bound (mass 0.6) by ~0.6; they differ by less than SLACK_TOL.
+    a = [Item("a", "ca", 0.2, q={EDUCATIONAL: 0.0})]
+    b = [Item("b", "cb", 0.9, q={EDUCATIONAL: SLACK_TOL / 10})]
+    assert _better_page(a, b, edu_bound, DEFAULT_REGISTRY, 1) == b  # equal violation -> relevance
+    c = [Item("c", "cc", 0.1, q={EDUCATIONAL: 0.5})]
+    assert _better_page(b, c, edu_bound, DEFAULT_REGISTRY, 1) == c  # clearly less violation wins
+
+
 def test_budget_is_shared_across_stages():
     calls = []
 

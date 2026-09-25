@@ -241,12 +241,7 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, deadline, solver) -> tu
         # greedy fallback. Serve whichever is better: less weighted violation, then
         # more relevance.
         greedy = _swap_greedy(pool, unsteered_page(pool, page_size), bounds, registry, page_size)
-        stage0 = page_of(x0)
-
-        def quality(items):
-            return (round(_weighted_violation(items, bounds, registry, page_size), 9), -sum(it.p for it in items))
-
-        return min((stage0, greedy), key=quality), limited
+        return _better_page(page_of(x0), greedy, bounds, registry, page_size), limited
     r1 = float(p @ _binary(x1[:n]))
 
     # Stage 2: prefer clear examples of pushed-up dimensions, losing at most delta of R1.
@@ -269,6 +264,17 @@ def _binary(x: np.ndarray) -> np.ndarray:
 
 
 # --- Fallback (plan Step 17) -------------------------------------------------------
+
+
+def _better_page(a, b, bounds, registry, page_size) -> list[Item]:
+    """Less weighted violation wins; violations within SLACK_TOL (the tolerance that
+    shortfalls and slack caps use) count as equal, and then higher relevance wins.
+    Ties go to `a`."""
+    va = _weighted_violation(a, bounds, registry, page_size)
+    vb = _weighted_violation(b, bounds, registry, page_size)
+    if abs(va - vb) > SLACK_TOL:
+        return a if va < vb else b
+    return a if sum(it.p for it in a) >= sum(it.p for it in b) else b
 
 
 def _weighted_violation(items, bounds, registry, page_size) -> float:
