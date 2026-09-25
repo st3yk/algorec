@@ -288,8 +288,10 @@ def _swap_greedy(pool, u0, bounds, registry, page_size) -> list[Item]:
 def _order(chosen: Sequence[Item], u0: Sequence[Item]) -> list[Item]:
     """Steered items (not in U0) at evenly spaced positions; the rest by relevance.
 
-    With k steered items on an n-item page, steered item j (0-based) goes to
-    1-based position floor((j + 1) * n / (k + 1)), e.g. 3 of 10 -> positions 2, 5, 7.
+    With k steered items on an n-item page, steered item j (0-based) goes to the
+    1-based position nearest the middle of the j-th of k equal segments,
+    floor((j + 0.5) * n / k + 0.5): 3 of 10 -> positions 2, 5, 8 (the plan's example).
+    Positions are distinct because segments are longer than 1 when k < n.
     """
     by_rel = lambda it: (-it.p, it.video_id)  # noqa: E731
     u0_ids = {it.video_id for it in u0}
@@ -298,7 +300,7 @@ def _order(chosen: Sequence[Item], u0: Sequence[Item]) -> list[Item]:
     n, k = len(chosen), len(steered)
     if k in (0, n):
         return steered + rest
-    slots = {math.floor((j + 1) * n / (k + 1)) - 1: it for j, it in enumerate(steered)}
+    slots = {math.floor((j + 0.5) * n / k + 0.5) - 1: it for j, it in enumerate(steered)}
     rest_iter = iter(rest)
     return [slots[pos] if pos in slots else next(rest_iter) for pos in range(n)]
 

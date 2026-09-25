@@ -61,7 +61,23 @@ def test_steered_items_are_evenly_spaced():
     # Push only educational (light at 0 = unconstrained): t_edu = 0 + 0.5 * (0.6 - 0) -> 3 items.
     page = assemble(light + edu, {EDUCATIONAL: 0.5}, DEFAULT_REGISTRY, P)
     positions = [k + 1 for k, it in enumerate(page.items) if it.video_id in page.steered_ids]
-    assert positions == [2, 5, 7]
+    assert positions == [2, 5, 8]  # the plan's example
+
+
+@pytest.mark.parametrize("n", range(1, 13))
+def test_steered_positions_are_distinct_and_evenly_spread_for_every_count(n):
+    from steerrec.assembler import _order
+
+    for k in range(n + 1):
+        u0 = [Item(f"u{i}", f"cu{i}", 0.9 - i * 0.01) for i in range(n - k)]
+        steered = [Item(f"s{i}", f"cs{i}", 0.5 - i * 0.01) for i in range(k)]
+        page = _order(u0 + steered, u0)
+        assert len(page) == n and {it.video_id for it in page} == {it.video_id for it in u0 + steered}
+        pos = [i for i, it in enumerate(page) if it.video_id.startswith("s")]
+        if 0 < k < n:
+            gaps = [b - a for a, b in zip(pos, pos[1:])]
+            assert not gaps or max(gaps) - min(gaps) <= 1
+            assert pos[0] <= n / k and (n - 1 - pos[-1]) <= n / k  # no bunching at either end
 
 
 def test_unknown_score_key_anywhere_in_pool_is_rejected():
