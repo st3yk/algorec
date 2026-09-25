@@ -39,7 +39,7 @@ def render_page(s: float, page: Page, catalog: Catalog, page_size: int) -> str:
             op = ">=" if b.kind is BoundKind.LOWER_TOTAL else "<="
             lines.append(f"  target: {b.dim_id} {unit} {op} {b.target:.2f}   (unsteered page: {b.reference:.2f})")
     else:
-        lines.append("  neutral: no mix constraints, the page is the unsteered top-10 by relevance")
+        lines.append(f"  neutral: no mix constraints, the page is the unsteered top-{page_size} by relevance")
     lines.append(f"  {'#':>2}  {'':1} {'kind':7} {'p':>5} {'q_edu':>6} {'q_lgt':>6}  title")
     for pos, it in enumerate(page.items, start=1):
         mark = "*" if it.video_id in page.steered_ids else " "
@@ -57,7 +57,7 @@ def render_page(s: float, page: Page, catalog: Catalog, page_size: int) -> str:
         what = sf.dim_id or "page size"
         lines.append(f"  SHORTFALL ({sf.kind.value}): {what} missed by {sf.amount:.2f} items")
     if page.used_fallback:
-        lines.append("  (solver unavailable: greedy fallback page)")
+        lines.append("  (solver gave no usable page: greedy fallback)")
     if page.hit_time_limit:
         lines.append("  (a solver stage hit its time limit: this page may be suboptimal)")
     return "\n".join(lines)

@@ -61,5 +61,10 @@ py_binary(
     name = "demo",
     srcs = ["demo.py"],
     main = "demo.py",
-    deps = [":demo_lib"],
+    deps = [
+        ":assembler",
+        ":registry",
+        ":synthetic",
+        ":targets",
+    ],
 )
