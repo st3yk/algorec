@@ -6,6 +6,12 @@ Everything builds and tests with **Bazel**, using a hermetic Python 3.12 and loc
 
 Install [Bazelisk](https://github.com/bazelbuild/bazelisk). It reads `.bazelversion` and fetches the matching Bazel.
 
+Then enable the git hooks once per clone:
+
+```sh
+tools/setup.sh   # commit-msg, pre-commit and pre-push checks from tools/githooks/
+```
+
 ## Everyday commands
 
 ```sh

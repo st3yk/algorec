@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -uo pipefail
+repo="$(git rev-parse --show-toplevel)"
+head="$(git rev-parse HEAD)"
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/master | refs/heads/main)
+      echo "pre-push: pushing to $remote_ref is not allowed; open a PR from a feat/* branch." >&2
+      exit 1
+      ;;
+  esac
+  if [[ "$local_sha" != 0000000000000000000000000000000000000000 && "$local_sha" != "$head" ]]; then
+    echo "pre-push: push the branch you have checked out, so the gate judges what you push ($local_ref)." >&2
+    exit 1
+  fi
+done
+"$repo/tools/verify"
+code=$?
+case "$code" in
+  0) exit 0 ;;
+  2) echo "pre-push: NEEDS_HUMAN. Pushing is allowed; the PR must stay a draft until a human accepts it." >&2; exit 0 ;;
+  *) echo "pre-push: tools/verify says FAIL or ERROR (exit $code). Fix it before pushing." >&2; exit 1 ;;
+esac

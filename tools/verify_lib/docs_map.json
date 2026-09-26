@@ -1,0 +1,15 @@
+{
+  "steerrec/__init__.py": ["docs/README.md"],
+  "steerrec/items.py": ["docs/code/items-and-registry.md"],
+  "steerrec/registry.py": ["docs/code/items-and-registry.md"],
+  "steerrec/targets.py": ["docs/code/targets.md", "docs/concepts.md"],
+  "steerrec/assembler.py": ["docs/code/assembler.md"],
+  "steerrec/synthetic.py": ["docs/code/synthetic-and-demo.md"],
+  "steerrec/demo.py": ["docs/code/synthetic-and-demo.md"],
+  "proto/**.proto": ["docs/service-contract.md"],
+  "tests/**.py": ["docs/testing.md"],
+  "tools/verify": ["docs/guardrails.md"],
+  "tools/**.py": ["docs/guardrails.md"],
+  ".claude/**": ["docs/guardrails.md"],
+  ".github/**": ["docs/guardrails.md"]
+}

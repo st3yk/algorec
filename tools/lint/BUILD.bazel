@@ -1,0 +1,93 @@
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_library.bzl", "py_library")
+load("@rules_python//python:py_test.bzl", "py_test")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "py_srcs",
+    srcs = glob(["*.py"]),
+)
+
+py_library(
+    name = "ruff_lib",
+    srcs = ["ruff.py"],
+    data = ["@pypi//ruff:data"],
+    deps = ["@pypi//ruff"],
+)
+
+py_binary(
+    name = "ruff",
+    srcs = ["ruff.py"],
+    data = ["@pypi//ruff:data"],
+    deps = ["@pypi//ruff"],
+)
+
+py_binary(
+    name = "fix",
+    srcs = ["fix.py"],
+    deps = [":ruff_lib"],
+)
+
+LINTED = [
+    "//:py_srcs",
+    "//steerrec:py_srcs",
+    "//tests:py_srcs",
+    "//tools:py_srcs",
+]
+
+LINTED_PATHS = ["$(rootpaths %s)" % t for t in LINTED]
+
+py_test(
+    name = "ruff_check",
+    size = "small",
+    srcs = ["lint_test.py"],
+    args = ["check"] + LINTED_PATHS,
+    data = LINTED + ["//:ruff.toml"],
+    main = "lint_test.py",
+    deps = [":ruff_lib"],
+)
+
+py_test(
+    name = "ruff_format_check",
+    size = "small",
+    srcs = ["lint_test.py"],
+    args = ["format"] + LINTED_PATHS,
+    data = LINTED + ["//:ruff.toml"],
+    main = "lint_test.py",
+    deps = [":ruff_lib"],
+)
+
+py_test(
+    name = "mypy",
+    size = "small",
+    srcs = ["mypy_test.py"],
+    args = [
+        "$(rootpaths //steerrec:py_srcs)",
+        "$(rootpaths //tools:py_srcs)",
+    ],
+    data = [
+        "//:mypy.ini",
+        "//steerrec:py_srcs",
+        "//tools:py_srcs",
+    ],
+    main = "mypy_test.py",
+    deps = [
+        "@pypi//mypy",
+        "@pypi//numpy",
+        "@pypi//protobuf",
+        "@pypi//pytest",
+        "@pypi//scipy",
+        "@pypi//types_protobuf",
+        "@rules_python//python/runfiles",
+    ],
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**"],
+        exclude = ["**/__pycache__/**"],
+    ),
+    visibility = ["//:__pkg__"],
+)

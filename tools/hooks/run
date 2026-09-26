@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repo="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+module="$1"
+shift
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$repo" exec python3 -m "tools.hooks.$module" "$@"

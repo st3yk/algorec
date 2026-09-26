@@ -3,9 +3,9 @@
 See docs/concepts.md and docs/code/targets.md.
 """
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Mapping, Sequence
 
 from steerrec.items import Item
 from steerrec.registry import Registry
@@ -109,5 +109,7 @@ def compute_bounds(
         else:
             ubar = exclusive_share(u0, dim_id, pushed_up, page_size)
             t_lo = min(dim.t_min, ubar)
-            bounds.append(Bound(dim_id, BoundKind.UPPER_EXCLUSIVE, ubar - (-s) * (ubar - t_lo), ubar, pushed_up, page_size))
+            bounds.append(
+                Bound(dim_id, BoundKind.UPPER_EXCLUSIVE, ubar - (-s) * (ubar - t_lo), ubar, pushed_up, page_size)
+            )
     return bounds

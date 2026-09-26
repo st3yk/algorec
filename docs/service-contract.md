@@ -7,6 +7,10 @@ The contract is [`proto/steerrec/v1/recommender.proto`](../proto/steerrec/v1/rec
 **Status**: the contract is specified and compiles, but no server exists yet.
 The "Backed by today" column says which part of `steerrec/` a field maps to.
 
+Compatibility is enforced by `//tools/proto_compat:test` against
+`proto/recommender.fields.golden` (see [guardrails.md](guardrails.md#service-contract-compatibility)).
+Fields can be added; they are never renumbered, reused or removed without `reserved`.
+
 The recommender is a standalone gRPC service with two calls. The backend calls
 `GetNextBatch` to get video ids, and it calls `ReportImpressions` to report what
 was actually watched.

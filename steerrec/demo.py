@@ -10,7 +10,7 @@ page U0). See docs/code/synthetic-and-demo.md.
 
 import argparse
 import sys
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 from steerrec.assembler import Page, assemble
 from steerrec.registry import DEFAULT_REGISTRY, EDUCATIONAL, LIGHT, single_slider
@@ -77,7 +77,7 @@ def render_sweep(pages: Sequence[tuple[float, Page]], page_size: int) -> str:
     return "\n".join(lines)
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--slider", type=float, action="append", help="slider value(s) in [-1, 1] to show pages for")
     parser.add_argument("--seed", type=int, default=0, help="synthetic catalog seed")

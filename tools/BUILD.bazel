@@ -1,0 +1,28 @@
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "py_srcs",
+    srcs = glob(["*.py"]) + [
+        "//tools/agent:py_srcs",
+        "//tools/conventions:py_srcs",
+        "//tools/github:py_srcs",
+        "//tools/hooks:py_srcs",
+        "//tools/lint:py_srcs",
+        "//tools/proto_compat:py_srcs",
+        "//tools/verify_lib:py_srcs",
+    ],
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**"],
+        exclude = ["**/__pycache__/**"],
+    ),
+    visibility = ["//:__pkg__"],
+)
+
+exports_files([
+    "githooks/pre-push",
+    "verify",
+])

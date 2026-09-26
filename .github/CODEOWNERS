@@ -1,0 +1,7 @@
+/.github/ @st3yk
+/.claude/settings.json @st3yk
+/tools/ @st3yk
+/ruff.toml @st3yk
+/mypy.ini @st3yk
+/pytest.ini @st3yk
+/.bazelrc @st3yk

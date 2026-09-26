@@ -68,3 +68,17 @@ py_binary(
         ":targets",
     ],
 )
+
+filegroup(
+    name = "py_srcs",
+    srcs = glob(["*.py"]),
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**"],
+        exclude = ["**/__pycache__/**"],
+    ),
+    visibility = ["//:__pkg__"],
+)

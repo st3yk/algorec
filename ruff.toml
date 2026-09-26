@@ -1,0 +1,16 @@
+line-length = 120
+target-version = "py312"
+
+[per-file-target-version]
+"tools/verify_lib/**" = "py310"
+"tools/hooks/**" = "py310"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "ERA"]
+ignore = ["E501", "E731", "B905"]
+
+[lint.per-file-ignores]
+"tests/test_toolchain.py" = ["F401"]
+
+[lint.isort]
+known-first-party = ["steerrec", "tools"]

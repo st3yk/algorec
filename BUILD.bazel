@@ -6,3 +6,44 @@ compile_pip_requirements(
     src = "requirements.in",
     requirements_txt = "requirements_lock.txt",
 )
+
+exports_files([
+    ".github/workflows/verify.yml",
+    "conftest.py",
+    "mypy.ini",
+    "pytest.ini",
+    "ruff.toml",
+])
+
+filegroup(
+    name = "py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "repo_files",
+    srcs = glob(
+        ["**"],
+        exclude = [
+            ".git/**",
+            ".claude/**",
+            ".verify/**",
+            "**/__pycache__/**",
+            "bazel-*/**",
+        ],
+    ) + [
+        "//proto:all_files",
+        "//steerrec:all_files",
+        "//tests:all_files",
+        "//tools:all_files",
+        "//tools/agent:all_files",
+        "//tools/conventions:all_files",
+        "//tools/github:all_files",
+        "//tools/hooks:all_files",
+        "//tools/lint:all_files",
+        "//tools/proto_compat:all_files",
+        "//tools/verify_lib:all_files",
+    ],
+    visibility = ["//visibility:public"],
+)

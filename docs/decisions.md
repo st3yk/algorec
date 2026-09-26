@@ -25,6 +25,12 @@ and what building it taught us. Record new ones here when you make them.
 | **Shortfalls have a `kind` but no `reason`** | Reasons (`pool_exhausted`, `below_relevance`, …) come from the retrieval and filter stages, which don't exist yet. |
 | **Steered items go to `floor((j + 0.5)·n/k + 0.5)`** | Spreads them evenly. For example, 3 of 10 go to positions 2, 5, 8. |
 | **Bazel 9 with Bzlmod, one CPU-only PyPI hub, hermetic Python 3.12** | Reproducible builds. The system Python's scipy 1.8 has no `milp`. A GPU hub comes with the feature-extraction jobs. |
+| **Wall-clock tests run alone, in their own tier** | The 2 s default budget test depends on the machine. Under a loaded machine (a reviewer running tests in parallel) or a slower CI runner it can fail with correct code. The optimality property is checked with a 30 s budget in the normal tier, and only "the default is enough" stays wall-clock bound, tagged `timing` and `exclusive`. |
+| **Tiers are selected with pytest markers, not by moving tests** | Moving tests between files would churn history and docs. One `py_test` per tier over the same file, each with `-m`, keeps every test in one place and in exactly one target. |
+| **ruff and mypy come from the locked PyPI wheels, run as `py_test`s** | They are pinned and hashed like every other dependency, cached by Bazel, and part of `bazel test //...`. A hand-written wrapper finds the wheel's `bin/ruff`; it needs no extra Bazel module. |
+| **ruff ignores E501, E731 and B905** | The formatter owns line length. Assigned lambdas are used in the core. `zip(strict=)` would add runtime checks to the assembler. Exceptions live in `ruff.toml` because the no-comments rule rules out `# noqa`. |
+| **`Solver` is `Callable[..., Any]`** | The assembler reads `.status` and `.x` from the result, which `object` doesn't allow; scipy ships no stubs for `milp`'s result. |
+| **The proto contract is checked against a golden listing, not with buf** | `proto_library` already emits the descriptor set, so a small Python comparison needs no new toolchain. `update_golden` refuses breaking changes, so the golden only grows. |
 
 ## Findings from building the steering core
 
