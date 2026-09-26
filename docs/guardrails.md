@@ -105,6 +105,21 @@ only the standard library, and ruff checks it with `target-version = py310`.
 Its rules are tested by `//tools/verify_lib:selftest` on scratch git
 repositories.
 
+## Around the agent: hooks
+
+These give fast feedback. None of them decides the verdict; `tools/verify` does.
+
+| Hook | Runs | What it does |
+|---|---|---|
+| Claude Code `PostToolUse` (`Edit`, `Write`) | after each file edit | `tools/hooks/run post_edit`: ruff and the convention rules on that one file. Problems go straight back to the agent (exit 2). About 0.1 s: it calls the ruff binary directly, found once through `bazel info output_base` and cached in `.verify/ruff-path`. |
+| Claude Code `Stop` | when the agent tries to finish | `tools/hooks/run on_stop`: runs `tools/verify --fast` unless the working tree is unchanged since its last green run (a fingerprint of HEAD, the diff and untracked files, in `.verify/last-fast-green`). A failure sends the agent back with the failing lines. A retry (`stop_hook_active`) is let through, so it can't loop. |
+| Claude Code `SessionStart` | at session start and resume | `tools/hooks/run session_start`: prints the branch, `git status`, and the "Current state" of every `design/*/build-log.md`. |
+
+The Claude Code hooks are configured in `.claude/settings.json`.
+
+The hook scripts run under the system Python (3.10 or newer), use only the
+standard library, and are tested by `//tools/hooks:selftest`.
+
 ## Lint and format
 
 | Target | What it checks |

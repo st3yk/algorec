@@ -3,6 +3,7 @@ target-version = "py312"
 
 [per-file-target-version]
 "tools/verify_lib/**" = "py310"
+"tools/hooks/**" = "py310"
 
 [lint]
 select = ["E", "F", "W", "I", "B", "UP", "ERA"]
