@@ -31,18 +31,14 @@
       "Bash(git branch --show-current)",
       "Bash(git show origin/master:tools/verify)",
       "Bash(bash -s -- --base origin/master*)",
-      "Bash(git push origin feat/*)",
-      "Bash(git push -u origin feat/*)",
-      "Bash(gh pr create *)",
-      "Bash(gh pr edit *)",
       "Bash(gh pr view *)",
       "Bash(gh pr checks *)",
-      "Bash(gh pr ready *)",
       "Bash(gh pr list *)",
       "Bash(gh run view *)",
       "Bash(gh run rerun *)",
       "Bash(gh run list *)",
-      "Bash(gh run watch *)"
+      "Bash(gh run watch *)",
+      "Bash(tools/agent/open_pr.sh *)"
     ],
     "deny": [
       "Bash(git push * master)",
@@ -119,7 +115,12 @@
       "Edit(**/mypy.ini)",
       "Edit(**/pytest.ini)",
       "Edit(**/.bazelrc)",
-      "Edit(**/.bazelversion)"
+      "Edit(**/.bazelversion)",
+      "Bash(git push*)",
+      "Bash(gh pr create*)",
+      "Bash(gh pr ready*)",
+      "Bash(gh pr edit*)",
+      "Bash(gh pr reopen*)"
     ]
   },
   "hooks": {

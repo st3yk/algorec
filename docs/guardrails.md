@@ -264,12 +264,12 @@ These give fast feedback. None of them decides the verdict; `tools/verify` does.
 | Hook | Runs | What it does |
 |---|---|---|
 | Claude Code `PostToolUse` (`Edit`, `Write`) | after each file edit | `tools/hooks/run post_edit`: ruff and the convention rules on that one file. Problems go straight back to the agent (exit 2). About 0.1 s: it calls the ruff binary directly, found once through `bazel info output_base` and cached in `.verify/ruff-path`. |
-| Claude Code `PreToolUse` (`Bash`) | before each shell command | `tools/hooks/run pre_bash`: rejects `git push` with a `+` or `:` refspec, `--force*`, `--mirror`, `--all`, `--delete`, `--prune`, `-f` or `-d` (also inside combined flags such as `-uf`), a destination outside `feat/*`, or no explicit remote and branch (exit 2). It finds `git` by basename, sees through `command`, `env`, `exec`, `nohup`, `sudo` and `bash -c`, knows which push options take a value (`-o`, `--push-option`, `--repo`, …), and ignores shell redirections. It is still a speed bump: any other way of running git gets past it. |
+| Claude Code `PreToolUse` (`Bash`) | before each shell command | `tools/hooks/run pre_bash`: rejects every `git push` and `gh pr create`, `ready`, `edit`, `merge` and `reopen` (exit 2), and points to `tools/agent/open_pr.sh`, the only way agents push or open a PR. It finds `git` and `gh` by basename, sees through `command`, `env`, `exec`, `nohup`, `sudo` and `bash -c`, and ignores heredoc bodies. It is a speed bump: any other way of running git gets past it. |
 | Claude Code `Stop` | when the agent tries to finish | `tools/hooks/run on_stop`: runs `tools/verify --fast` unless the working tree is unchanged since its last run (a fingerprint of HEAD, the diff and untracked files). A green result is remembered in `.verify/last-fast-green`; a red one in `.verify/last-fast-red`, so an unchanged red tree is sent back with the cached failure instead of a 20 s re-run. A retry (`stop_hook_active`) is let through, so it can't loop. |
 | Claude Code `SessionStart` | at session start and resume | `tools/hooks/run session_start`: prints the branch, `git status`, and the "Current state" of every `design/*/build-log.md`. |
 | git `commit-msg` | each commit | The gate's `commits` rules on the message being written. |
 | git `pre-commit` | each commit | ruff and the convention rules on the staged Python files (it reads the working copy of each staged file). |
-| git `pre-push` | each push | Refuses a push to `master` or `main`, or of a commit other than HEAD, then runs the gate on HEAD. `PASS` and `NEEDS_HUMAN` push; `FAIL` and `ERROR` don't. |
+| git `pre-push` | each push | Refuses a push that didn't come through `tools/agent/open_pr.sh` (which sets `STEERREC_OPEN_PR=1` after the trusted gate), a push to `master` or `main`, and a push of a commit other than HEAD. |
 
 Enable the git hooks once per clone with `tools/setup.sh`
 (`core.hooksPath = tools/githooks`). The Claude Code hooks are in
@@ -283,9 +283,10 @@ library, and are tested by `//tools/hooks:selftest`.
 
 ## Agent permissions: a speed bump, not a boundary
 
-`.claude/settings.json` allows the commands the build loop needs and denies
-some that it never should (pushing to `master`, force pushes, `--no-verify`,
-`gh pr merge`, editing lock files, the golden and the guardrail files). The
+`.claude/settings.json` allows the commands the build loop needs, including
+`tools/agent/open_pr.sh`, and denies some that it never should: any direct
+`git push`, `gh pr create`, `ready`, `edit`, `reopen` and `merge`, `--no-verify`,
+editing lock files, the golden and the guardrail files. The
 Claude Code docs are explicit that Bash rules match the command as written,
 not the program: another spelling of the same command isn't matched. And
 `bazel test`, `bazel run`, `tools/verify` and the git hooks all execute code

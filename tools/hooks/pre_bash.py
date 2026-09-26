@@ -1,6 +1,6 @@
-"""Claude Code PreToolUse hook for Bash: rejects `git push` forms that could reach the
-default branch or rewrite history (exit 2). It is a speed bump, not a security boundary.
-See docs/guardrails.md."""
+"""Claude Code PreToolUse hook for Bash: agents don't push or open PRs themselves. That goes
+through tools/agent/open_pr.sh, which checks the verdict first (exit 2 sends the agent
+there). It is a speed bump, not a security boundary. See docs/guardrails.md."""
 
 import json
 import os
@@ -9,14 +9,27 @@ import shlex
 import sys
 
 SEPARATORS = re.compile(r"&&|\|\||;|\||\n")
-REJECTED_OPTIONS = ("--force", "--mirror", "--all", "--delete", "--prune", "--force-with-lease", "--force-if-includes")
-REJECTED_SHORT = ("f", "d")
-VALUE_OPTIONS = ("-o", "--push-option", "--repo", "--receive-pack", "--exec")
 GIT_VALUE_OPTIONS = ("-C", "-c", "--git-dir", "--work-tree", "--namespace")
 WRAPPERS = ("command", "exec", "nohup", "time", "sudo", "builtin")
 SHELLS = ("bash", "sh", "zsh", "dash")
-REDIRECTION = re.compile(r"^\d*(>>?|<)(&\d+)?")
-ALLOWED_DESTINATION = re.compile(r"^(refs/heads/)?feat/[A-Za-z0-9._/-]+$")
+HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_]\w*)\1")
+GH_PR_BLOCKED = ("create", "ready", "edit", "merge", "reopen")
+DOOR = "tools/agent/open_pr.sh <slug>"
+
+
+def strip_heredocs(command: str) -> str:
+    out = []
+    delimiter: str | None = None
+    for line in command.split("\n"):
+        if delimiter is not None:
+            if line.strip() == delimiter:
+                delimiter = None
+            continue
+        out.append(line)
+        m = HEREDOC.search(line)
+        if m:
+            delimiter = m.group(2)
+    return "\n".join(out)
 
 
 def _strip_prefix(words: list[str]) -> list[str]:
@@ -26,7 +39,7 @@ def _strip_prefix(words: list[str]) -> list[str]:
             words = words[1:]
         elif head == "env":
             words = words[1:]
-            while words and (words[0].startswith("-") or ("=" in words[0])):
+            while words and (words[0].startswith("-") or "=" in words[0]):
                 words = words[1:]
         elif head in WRAPPERS:
             words = words[1:]
@@ -37,9 +50,9 @@ def _strip_prefix(words: list[str]) -> list[str]:
     return words
 
 
-def _pushes(command: str, depth: int = 0) -> list[list[str]]:
+def commands(command: str, depth: int = 0) -> list[list[str]]:
     out = []
-    for part in SEPARATORS.split(command):
+    for part in SEPARATORS.split(strip_heredocs(command)):
         try:
             words = _strip_prefix(shlex.split(part))
         except ValueError:
@@ -48,65 +61,26 @@ def _pushes(command: str, depth: int = 0) -> list[list[str]]:
             continue
         program = os.path.basename(words[0])
         if program in SHELLS and "-c" in words and depth < 3:
-            script = words[words.index("-c") + 1] if words.index("-c") + 1 < len(words) else ""
-            out += _pushes(script, depth + 1)
+            i = words.index("-c") + 1
+            out += commands(words[i] if i < len(words) else "", depth + 1)
             continue
-        if program != "git":
-            continue
-        i = 1
-        while i < len(words) and words[i].startswith("-"):
-            i += 2 if words[i] in GIT_VALUE_OPTIONS else 1
-        if i < len(words) and words[i] == "push":
-            out.append(words[i + 1 :])
+        out.append([program, *words[1:]])
     return out
 
 
-def _problems(args: list[str]) -> list[str]:
-    problems = []
-    positional = []
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if REDIRECTION.match(arg):
-            i += 2 if arg in (">", ">>", "<", "2>") else 1
-            continue
-        if arg in VALUE_OPTIONS:
-            i += 2
-            continue
-        if arg.startswith("--"):
-            if arg.split("=", 1)[0] in REJECTED_OPTIONS or arg.startswith("--force"):
-                problems.append(f"`{arg}` is not allowed")
-        elif arg.startswith("-") and len(arg) > 1:
-            flags = arg[1:]
-            if "o" in flags:
-                i += 2
-                continue
-            for flag in flags:
-                if flag in REJECTED_SHORT:
-                    problems.append(f"`-{flag}` (in `{arg}`) is not allowed")
-        else:
-            positional.append(arg)
-        i += 1
-    if len(positional) < 2:
-        problems.append("name the remote and the feat/* branch explicitly: git push origin feat/<slug>")
-        return problems
-    for spec in positional[1:]:
-        if spec.startswith("+"):
-            problems.append(f"`{spec}` is a force push")
-            continue
-        source, _, destination = spec.partition(":")
-        if spec.startswith(":"):
-            problems.append(f"`{spec}` deletes a remote branch")
-        elif not ALLOWED_DESTINATION.match(destination or source):
-            problems.append(f"`{spec}` pushes to `{destination or source}`; only feat/* branches are allowed")
-    return problems
-
-
-def push_problems(command: str) -> list[str]:
-    problems = []
-    for args in _pushes(command):
-        problems += _problems(args)
-    return problems
+def problems(command: str) -> list[str]:
+    out = []
+    for words in commands(command):
+        program, args = words[0], words[1:]
+        if program == "git":
+            i = 0
+            while i < len(args) and args[i].startswith("-"):
+                i += 2 if args[i] in GIT_VALUE_OPTIONS else 1
+            if i < len(args) and args[i] == "push":
+                out.append(f"`git push` is not for agents; {DOOR} pushes once the change is ready")
+        elif program == "gh" and len(args) >= 2 and args[0] == "pr" and args[1] in GH_PR_BLOCKED:
+            out.append(f"`gh pr {args[1]}` is not for agents; {DOOR} opens or updates the PR once it's ready")
+    return out
 
 
 def main() -> int:
@@ -115,10 +89,10 @@ def main() -> int:
     except json.JSONDecodeError:
         return 0
     command = (event.get("tool_input") or {}).get("command") or ""
-    problems = push_problems(command)
-    if not problems:
+    found = problems(command)
+    if not found:
         return 0
-    print("git push blocked by tools/hooks/pre_bash.py:\n- " + "\n- ".join(problems), file=sys.stderr)
+    print("blocked by tools/hooks/pre_bash.py:\n- " + "\n- ".join(found), file=sys.stderr)
     return 2
 
 

@@ -133,69 +133,62 @@ def test_post_edit_checks_the_repo_the_file_is_in(repo, monkeypatch, capsys):
 @pytest.mark.parametrize(
     "command",
     [
-        "git push origin feat/x",
-        "git push -u origin feat/x",
-        "git push origin feat/x:feat/x",
-        "git status && git push origin feat/a-b.c",
+        "git status && git log --oneline -3",
         "echo git push origin master",
-        "git push -u origin feat/x 2>&1 | tail -3",
-        "git push origin feat/x > /dev/null",
-        "git push -o ci.skip origin feat/x",
-        "git push --push-option=ci.skip origin feat/x",
-        "/usr/bin/git push -u origin feat/x",
+        "gh pr view 3",
+        "gh pr checks 3",
+        "tools/agent/open_pr.sh demo",
+        "cat > notes.sh <<'EOF'\ngit push origin feat/x\ngh pr create --fill\nEOF\nbash -n notes.sh",
+        "python3 - <<EOF\nprint('git push')\nEOF",
     ],
 )
-def test_the_push_guard_allows_feature_branch_pushes(command):
-    assert pre_bash.push_problems(command) == []
+def test_the_guard_allows_everything_but_pushing_and_pr_changes(command):
+    assert pre_bash.problems(command) == []
 
 
 @pytest.mark.parametrize(
     "command, fragment",
     [
-        ("git push origin master", "only feat/*"),
-        ("git push origin feat/x +HEAD:master", "force push"),
-        ("git push origin feat/x :master", "deletes a remote branch"),
-        ("git push origin feat/x feat/x:refs/heads/master", "only feat/*"),
-        ("git push origin feat/x --mirror", "--mirror"),
-        ("git push --force origin feat/x", "--force"),
-        ("git push --force-with-lease origin feat/x", "--force-with-lease"),
-        ("git push origin", "name the remote"),
-        ("git -C . push origin HEAD:master", "only feat/*"),
-        ("FOO=1 git push origin main", "only feat/*"),
-        ("git push -uf origin feat/x", "`-f` (in `-uf`)"),
-        ("/usr/bin/git push origin master", "only feat/*"),
-        ("command git push origin master", "only feat/*"),
-        ("env FOO=1 git push origin master", "only feat/*"),
-        ('bash -c "git push origin master"', "only feat/*"),
-        ("sudo -E git push --force origin feat/x", "--force"),
-        ("git push -d origin feat/x", "`-d`"),
+        ("git push origin feat/x", "`git push`"),
+        ("git push -u origin feat/x 2>&1 | tail -3", "`git push`"),
+        ("/usr/bin/git push origin master", "`git push`"),
+        ("command git -C . push origin feat/x", "`git push`"),
+        ("env FOO=1 git push origin feat/x", "`git push`"),
+        ('bash -c "git push origin feat/x"', "`git push`"),
+        ("sudo -E git push --force origin feat/x", "`git push`"),
+        ("gh pr create --fill", "`gh pr create`"),
+        ("gh pr ready 3", "`gh pr ready`"),
+        ("gh pr edit 3 --body-file b.md", "`gh pr edit`"),
+        ("gh pr merge 3 --merge", "`gh pr merge`"),
+        ("cat > x <<'EOF'\nhi\nEOF\ngit push origin feat/x", "`git push`"),
     ],
 )
-def test_the_push_guard_rejects_everything_else(command, fragment):
-    problems = pre_bash.push_problems(command)
-    assert problems and any(fragment in p for p in problems), problems
+def test_the_guard_sends_pushes_and_pr_changes_to_the_door(command, fragment):
+    found = pre_bash.problems(command)
+    assert found and all("tools/agent/open_pr.sh" in p for p in found) and any(fragment in p for p in found)
 
 
-def pre_push(repo, verify_code: int, stdin: str) -> int:
+def pre_push(repo, verify_code: int, stdin: str, door: bool = False) -> int:
     tools = repo / "tools"
     tools.mkdir(exist_ok=True)
     (tools / "verify").write_text(f"#!/bin/sh\nexit {verify_code}\n")
     (tools / "verify").chmod(0o755)
     hook = os.path.join(RUNFILES, "tools/githooks/pre-push")
-    return subprocess.run(["bash", hook], cwd=repo, input=stdin, capture_output=True, text=True).returncode
+    env = {**os.environ, **({"STEERREC_OPEN_PR": "1"} if door else {})}
+    return subprocess.run(["bash", hook], cwd=repo, input=stdin, capture_output=True, text=True, env=env).returncode
 
 
-@pytest.mark.parametrize("verdict, allowed", [(0, True), (2, True), (1, False), (3, False)])
-def test_pre_push_follows_the_verdict(repo, verdict, allowed):
+def test_pre_push_refuses_pushes_that_skip_the_door(repo):
     head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     stdin = f"refs/heads/feat/x {head} refs/heads/feat/x {'0' * 40}\n"
-    assert (pre_push(repo, verdict, stdin) == 0) is allowed
+    assert pre_push(repo, 0, stdin) == 1
+    assert pre_push(repo, 1, stdin, door=True) == 0
 
 
 def test_pre_push_refuses_the_default_branch_and_other_commits(repo):
     head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-    assert pre_push(repo, 0, f"refs/heads/master {head} refs/heads/master {'0' * 40}\n") == 1
-    assert pre_push(repo, 0, f"refs/heads/feat/x {'1' * 40} refs/heads/feat/x {'0' * 40}\n") == 1
+    assert pre_push(repo, 0, f"refs/heads/master {head} refs/heads/master {'0' * 40}\n", door=True) == 1
+    assert pre_push(repo, 0, f"refs/heads/feat/x {'1' * 40} refs/heads/feat/x {'0' * 40}\n", door=True) == 1
 
 
 def test_session_start_prints_the_build_log_state(repo, capsys, monkeypatch):
