@@ -2,3 +2,5 @@ numpy
 # milp() needs >= 1.9.
 scipy>=1.9
 pytest
+ruff
+mypy
