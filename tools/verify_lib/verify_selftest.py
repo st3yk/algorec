@@ -420,7 +420,7 @@ def pr_repo(repo: Repo) -> str:
 
 def test_the_pr_body_has_every_section_and_only_real_commits(repo):
     head = pr_repo(repo)
-    report = Report(mode="gate", sha=head, base="master", merge_base="0" * 40)
+    report = Report(mode="gate", sha=head, base="master", merge_base=gitutil.merge_base(repo.path, "master", head))
     report.checks = [CheckResult("test", "pass", 1.0, "ok")]
     report.findings = [Finding("guardrails", HUMAN, "guardrail file changed", "ruff.toml")]
     body = build(repo.path, "s", report, "master")
@@ -434,11 +434,24 @@ def test_the_pr_body_has_every_section_and_only_real_commits(repo):
     assert hashes and hashes <= known
 
 
-def test_a_stale_or_missing_report_is_said_plainly(repo):
-    pr_repo(repo)
+def test_a_stale_missing_or_wrong_base_report_is_said_plainly(repo):
+    head = pr_repo(repo)
     stale = Report(mode="gate", sha="f" * 40, base="master")
     assert "verdict: stale" in build(repo.path, "s", stale, "master")
     assert "verdict: not run" in build(repo.path, "s", None, "master")
+    wrong = Report(mode="gate", sha=head, base="HEAD", merge_base=head)
+    wrong.checks = [CheckResult("test", "pass")]
+    body = build(repo.path, "s", wrong, "master")
+    assert "verdict: wrong base" in body and "PASS" not in body
+
+
+def test_hashes_that_are_not_commits_are_marked(repo):
+    head = pr_repo(repo)
+    with open(os.path.join(repo.path, "design/s/build-log.md"), "a") as f:
+        f.write("\n| 2 | see `deadbeef1` |\n")
+    body = build(repo.path, "s", None, "master")
+    assert "`deadbeef1` *(not a commit here)*" in body
+    assert f"`{head[:7]}` *(not" not in body
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from tools.verify_lib.report import CheckResult, Report, render_markdown
 
 PROSE_SECTIONS = ("Summary", "Why", "Not done")
 REVIEW_FIX = re.compile(r"review finding", re.I)
+HASH = re.compile(r"`([0-9a-f]{7,40})`")
 
 
 def section(markdown: str, heading: str) -> str:
@@ -69,6 +70,14 @@ def build(repo: str, slug: str, report: Report | None, base: str) -> str:
         parts.append(
             f"**`tools/verify` verdict: stale.** The report is for `{report.sha[:12]}`, not HEAD `{head[:12]}`."
         )
+        report = None
+    elif report.merge_base != mb:
+        parts.append(
+            f"**`tools/verify` verdict: wrong base.** The report judged against `{report.base}` "
+            f"(merge-base `{report.merge_base[:12]}`), not `{base}` (merge-base `{mb[:12]}`). "
+            f"Run `tools/verify --base {base}`."
+        )
+        report = None
     else:
         parts.append(render_markdown(report).split("\n", 1)[0])
         human = [f for f in report.findings if f.level == "needs_human"]
@@ -82,7 +91,7 @@ def build(repo: str, slug: str, report: Report | None, base: str) -> str:
         )
     parts.append(f"Plan: [`design/{slug}/plan.md`](design/{slug}/plan.md)")
     parts.append(f"## Commits ({len(commits)}, oldest first)\n\n{commit_table(commits)}")
-    if report is not None and report.sha == head:
+    if report is not None:
         parts.append("## Verification\n\n" + render_markdown(report))
     reviews = [line for line in review_log.splitlines() if line.startswith(("## ", "**Reviewed**"))]
     parts.append(
@@ -97,7 +106,16 @@ def build(repo: str, slug: str, report: Report | None, base: str) -> str:
         f"tools/verify --base {base}\n"
         "bazel run //steerrec:demo -- --sweep-only\n```"
     )
-    return "\n\n".join(parts) + "\n"
+    return mark_unknown_hashes(repo, "\n\n".join(parts) + "\n")
+
+
+def mark_unknown_hashes(repo: str, text: str) -> str:
+    def check(m: re.Match[str]) -> str:
+        if gitutil.git(repo, "cat-file", "-t", m.group(1), check=False).strip() == "commit":
+            return m.group(0)
+        return f"{m.group(0)} *(not a commit here)*"
+
+    return HASH.sub(check, text)
 
 
 def main(argv: list[str] | None = None) -> int:

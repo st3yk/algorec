@@ -96,14 +96,16 @@ tools/pr_body <slug> [--base origin/master] [--report .verify/reports/<sha>.json
 ```
 
 It prints a pull request description for the current branch. The facts come
-from tools: the verdict and report of the gate run for HEAD (it says "stale"
-or "not run" when there is none for HEAD), the commit table from git (with
+from tools: the verdict and report of the gate run for HEAD (it says "stale",
+"not run" or "wrong base" when there is no report for HEAD against the same
+merge-base), the commit table from git (with
 review-fix commits marked), the review rounds from
 `design/<slug>/review-log.md`, and the plan deviations from
 `design/<slug>/build-log.md`. Only the prose comes from the author: the
 `## Summary`, `## Why` and `## Not done` sections of
 `design/<slug>/summary.md`. A missing section says so instead of staying
-empty.
+empty. Any backticked hash in the body that isn't a commit in this
+repository is marked "not a commit here".
 
 ## Branch checks
 
