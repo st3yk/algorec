@@ -160,7 +160,7 @@ FAULTS = [
             "\ndef drill_helper() -> int:\n    return 1\n\n\ndef compute_bounds(",
         ),
         "feat(targets): add a helper\n\nDocs-Unchanged: internal helper, nothing user-visible",
-        "NEEDS_HUMAN",
+        "NEEDS_HUMAN/soft",
     ),
     Fault(
         "proto field renumbered",
@@ -221,7 +221,7 @@ FAULTS = [
             "",
         ),
         "test(targets): trim a check",
-        "NEEDS_HUMAN",
+        "NEEDS_HUMAN/soft",
     ),
     Fault(
         "neutral tests rebound to lambdas, plus the neutral-rows fault",
@@ -254,7 +254,7 @@ FAULTS = [
             "    if False:\n        assert exclusive_mass(it, EDUCATIONAL, pushed_up=(EDUCATIONAL,)) == pytest.approx(0.7)\n",
         ),
         "test(targets): park a check",
-        "NEEDS_HUMAN",
+        "NEEDS_HUMAN/soft",
     ),
     Fault(
         "commit checker loosened on the branch",
@@ -271,7 +271,7 @@ FAULTS = [
         "CI workflow edited",
         replace(".github/workflows/verify.yml", "    timeout-minutes: 30\n", "    timeout-minutes: 5\n"),
         "ci: shorten the timeout",
-        "NEEDS_HUMAN",
+        "NEEDS_HUMAN/hard",
     ),
     Fault(
         "new package no check sees",
@@ -339,6 +339,11 @@ def main(argv: list[str] | None = None) -> int:
             [os.path.join(clone, "tools", "verify"), "--base", "drill-base"], cwd=clone, capture_output=True, env=env
         )
         verdict = EXIT.get(result.returncode, f"exit {result.returncode}")
+        sha = git(clone, "rev-parse", "HEAD").strip()
+        report = os.path.join(clone, ".verify", "reports", f"{sha[:12]}.json")
+        if verdict == "NEEDS_HUMAN" and os.path.exists(report):
+            with open(report, encoding="utf-8") as f:
+                verdict += "/" + (json.load(f).get("human_kind") or "?")
         ok = verdict == fault.verdict and (hook_code is None or hook_code == fault.hook_rejects)
         failures += not ok
         hook = "" if hook_code is None else f" hook {fault.hook}: exit {hook_code}"
