@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(bazel build *)",
+      "Bash(bazel test *)",
+      "Bash(bazel run *)",
+      "Bash(bazel query *)",
+      "Bash(bazel info *)",
+      "Bash(bazel cquery *)",
+      "Bash(tools/verify *)",
+      "Bash(tools/pr_body *)",
+      "Bash(tools/verify_drill *)",
+      "Bash(tools/agent/start_build.sh *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git rev-parse *)",
+      "Bash(git fetch *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git switch *)",
+      "Bash(git worktree *)",
+      "Bash(git rm *)",
+      "Bash(git mv *)",
+      "Bash(git restore *)",
+      "Bash(git revert *)",
+      "Bash(git merge-base *)",
+      "Bash(git ls-files *)",
+      "Bash(git branch --show-current)",
+      "Bash(git show origin/master:tools/verify)",
+      "Bash(bash -s -- --base origin/master*)",
+      "Bash(git push origin feat/*)",
+      "Bash(git push -u origin feat/*)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr edit *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr ready *)",
+      "Bash(gh pr list *)",
+      "Bash(gh run view *)",
+      "Bash(gh run rerun *)",
+      "Bash(gh run list *)",
+      "Bash(gh run watch *)"
+    ],
+    "deny": [
+      "Bash(git push * master)",
+      "Bash(git push * master:*)",
+      "Bash(git push * HEAD:master*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push * --force*)",
+      "Bash(git push * -f)",
+      "Bash(git push * -f *)",
+      "Bash(git * --no-verify*)",
+      "Bash(git commit -n *)",
+      "Bash(git reset --hard*)",
+      "Bash(git config *hooksPath*)",
+      "Bash(git switch * --discard-changes*)",
+      "Bash(git switch --discard-changes*)",
+      "Bash(git switch -f*)",
+      "Bash(git switch * -f*)",
+      "Bash(git worktree remove --force*)",
+      "Bash(git worktree remove -f*)",
+      "Bash(git worktree remove * --force*)",
+      "Bash(git branch -D*)",
+      "Bash(git clean *)",
+      "Bash(gh pr merge*)",
+      "Bash(gh api *rulesets*)",
+      "Bash(gh repo edit*)",
+      "Bash(tools/github/apply_ruleset.sh*)",
+      "Edit(/requirements_lock.txt)",
+      "Edit(/MODULE.bazel.lock)",
+      "Edit(/MODULE.bazel)",
+      "Edit(/proto/recommender.fields.golden)",
+      "Edit(/.github/**)",
+      "Edit(/.claude/settings.json)",
+      "Edit(/tools/verify)",
+      "Edit(/tools/pr_body)",
+      "Edit(/tools/verify_drill)",
+      "Edit(/tools/setup.sh)",
+      "Edit(/tools/bazel)",
+      "Edit(/tools/verify_lib/**)",
+      "Edit(/tools/conventions/**)",
+      "Edit(/tools/lint/**)",
+      "Edit(/tools/proto_compat/**)",
+      "Edit(/tools/hooks/**)",
+      "Edit(/tools/githooks/**)",
+      "Edit(/tools/github/**)",
+      "Edit(/tools/agent/**)",
+      "Edit(/conftest.py)",
+      "Edit(/ruff.toml)",
+      "Edit(/mypy.ini)",
+      "Edit(/pytest.ini)",
+      "Edit(/.bazelrc)",
+      "Edit(/.bazelversion)",
+      "Edit(**/requirements_lock.txt)",
+      "Edit(**/MODULE.bazel.lock)",
+      "Edit(**/MODULE.bazel)",
+      "Edit(**/proto/recommender.fields.golden)",
+      "Edit(**/.github/**)",
+      "Edit(**/.claude/settings.json)",
+      "Edit(**/tools/verify)",
+      "Edit(**/tools/pr_body)",
+      "Edit(**/tools/verify_drill)",
+      "Edit(**/tools/setup.sh)",
+      "Edit(**/tools/bazel)",
+      "Edit(**/tools/verify_lib/**)",
+      "Edit(**/tools/conventions/**)",
+      "Edit(**/tools/lint/**)",
+      "Edit(**/tools/proto_compat/**)",
+      "Edit(**/tools/hooks/**)",
+      "Edit(**/tools/githooks/**)",
+      "Edit(**/tools/github/**)",
+      "Edit(**/tools/agent/**)",
+      "Edit(**/conftest.py)",
+      "Edit(**/ruff.toml)",
+      "Edit(**/mypy.ini)",
+      "Edit(**/pytest.ini)",
+      "Edit(**/.bazelrc)",
+      "Edit(**/.bazelversion)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/tools/hooks/run session_start",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/tools/hooks/run pre_bash",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/tools/hooks/run post_edit",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/tools/hooks/run on_stop",
+            "timeout": 900
+          }
+        ]
+      }
+    ]
+  }
+}
