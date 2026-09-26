@@ -38,12 +38,13 @@ over every file in the repository (`//:repo_files`):
 | Rule | What fails |
 |---|---|
 | `no-comments` | A `#` comment in `steerrec/`, `tests/` or `tools/` Python files. A shebang on line 1 is allowed. |
-| `no-docstrings` | A function or class docstring. |
+| `no-docstrings` | A function or class docstring, including an empty one. |
+| `no-bare-strings` | A string statement anywhere but the module docstring: a second module string, or a string used as a comment inside code. |
 | `module-docstring` | A file in `steerrec/` or `tools/` with no module docstring, or one that names no `docs/` page. Test files and empty `__init__.py` files are exempt, since `docs/testing.md` documents the tests. |
 | `doc-ref-exists` | A module docstring names a `docs/…` page (or `NORTH_STAR.md`, `BUILDING.md`, `AGENTS.md`) that doesn't exist. |
-| `py-test-rule` | A `tests/test_*.py` file with no `py_test` rule in `tests/BUILD.bazel`. |
+| `py-test-rule` | A `tests/test_*.py` file that isn't in the `srcs` of a `py_test` in `tests/BUILD.bazel`, or only in one tagged `manual`. The BUILD file is parsed, not searched, so a `py_library` or a commented-out rule doesn't count. |
 | `pytest-footer` | A test file that doesn't end with the pytest footer. |
-| `md-link` | A relative Markdown link to a missing file, or to a `#anchor` that no heading produces. Anchors follow GitHub's slug rules. Links inside code spans and fences are ignored. |
+| `md-link` | A relative link or image to a missing file, or to a `#anchor` that no heading produces. It covers inline links (with titles and `<…>` destinations), images, reference definitions, and repo-root paths (`/docs/…`). Anchors follow GitHub's slug rules, for ATX headings (closing `#`s allowed) and setext headings. Links in code spans and fenced blocks are ignored. Link text that spans lines is not checked. |
 
 Every failure prints the file, the line, and the rule it breaks. The rules are
 tested by `//tools/conventions:selftest`, with one violating fixture per rule.

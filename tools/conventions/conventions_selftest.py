@@ -49,6 +49,18 @@ def test_function_and_class_docstrings_are_rejected():
     assert [(v.rule, v.line) for v in violations] == [("no-docstrings", 7), ("no-docstrings", 11)]
 
 
+def test_empty_docstrings_and_bare_string_statements_are_rejected():
+    text = (
+        GOOD_MODULE + '"""A second module string."""\n\n\ndef f():\n    ""\n    x = 1\n    "explains x"\n    return x\n'
+    )
+    violations = check_repo(repo(steerrec__mod_DOT_py=text))
+    assert [(v.rule, v.line) for v in violations] == [
+        ("no-bare-strings", 4),
+        ("no-docstrings", 8),
+        ("no-bare-strings", 10),
+    ]
+
+
 def test_a_documented_package_needs_a_module_docstring():
     assert rules_of(repo(steerrec__mod_DOT_py="X = 1\n")) == ["module-docstring"]
 
@@ -73,6 +85,24 @@ def test_a_test_file_without_a_py_test_rule_is_rejected():
     assert [(v.rule, v.path) for v in violations] == [("py-test-rule", "tests/test_y.py")]
 
 
+@pytest.mark.parametrize(
+    "build",
+    [
+        'py_library(\n    name = "test_y",\n    srcs = ["test_y.py"],\n)\n',
+        'py_test(\n    name = "test_y",\n    srcs = ["test_y.py"],\n    tags = ["manual"],\n)\n',
+        '"""py_test(srcs = ["test_y.py"])"""\n',
+    ],
+)
+def test_only_a_non_manual_py_test_rule_counts(build):
+    files = repo(tests__test_y_DOT_py=GOOD_TEST, tests__BUILD_DOT_bazel=GOOD_BUILD + build)
+    assert rules_of(files) == ["py-test-rule"]
+
+
+def test_a_py_test_with_several_srcs_counts():
+    build = GOOD_BUILD + 'py_test(\n    name = "y",\n    srcs = ["helper.py", "test_y.py"],\n)\n'
+    assert check_repo(repo(tests__test_y_DOT_py=GOOD_TEST, tests__BUILD_DOT_bazel=build)) == []
+
+
 def test_a_test_file_without_the_footer_is_rejected():
     files = repo(tests__test_x_DOT_py="def test_x():\n    assert True\n")
     assert rules_of(files) == ["pytest-footer"]
@@ -87,6 +117,37 @@ def test_a_broken_anchor_is_rejected_and_urls_and_code_are_ignored():
     text = "[x](docs/page.md#nope) [y](https://example.com/a.md) `[z](nope.md)`\n```\n[w](nope.md)\n```\n"
     violations = check_repo(repo(README_DOT_md=text))
     assert [v.detail for v in violations] == ["docs/page.md#nope (no heading #nope in docs/page.md)"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '[x](docs/nope.md "a title")\n',
+        "[x](<docs/nope.md>)\n",
+        "![img](nope.png)\n",
+        "[x][ref]\n\n[ref]: docs/nope.md\n",
+        "[a [nested] text](docs/nope.md)\n",
+        "````\n```\n````\n[x](docs/nope.md)\n",
+        "  ```\ncode\n  ```\n[x](docs/nope.md)\n",
+    ],
+)
+def test_broken_links_in_every_link_form_are_rejected(text):
+    assert rules_of(repo(README_DOT_md=text)) == ["md-link"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "[x](/docs/page.md)\n",
+        '[x](docs/page.md#a-code-heading-yes "title")\n',
+        "[x](<docs/page.md>)\n",
+        "[x](#closed)\n\n## Closed ##\n",
+        "[x](#setext)\n\nSetext\n======\n",
+        "[x](mailto:someone@example.com)\n",
+    ],
+)
+def test_valid_links_in_every_link_form_resolve(text):
+    assert check_repo(repo(README_DOT_md=text)) == []
 
 
 def test_links_to_directories_and_non_text_files_resolve():
