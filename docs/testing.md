@@ -2,9 +2,31 @@
 
 ```sh
 bazel test //...                          # everything (results are cached)
+bazel test //... --config=fast            # the inner loop: skips `slow` and `timing` targets
 bazel test //... --nocache_test_results   # force a re-run
-bazel test //tests:test_assembler         # one file
+bazel test //tests:test_assembler         # one file's fast tests
 ```
+
+## Tiers
+
+Heavy property tests carry `@pytest.mark.slow`, and the one test that depends
+on wall-clock time carries `@pytest.mark.timing` (markers are registered in
+`pytest.ini`). A file with marked tests has one `py_test` target per tier. Each
+target selects its tests with `PYTEST_ADDOPTS="-m …"` in `env`, so every test
+runs in exactly one target:
+
+| Target | Selects | Tags | Runs in |
+|---|---|---|---|
+| `//tests:test_assembler` | `not slow and not timing` | | every tier |
+| `//tests:test_assembler_slow` | `slow` | `slow` | the gate (`--config=verify`) |
+| `//tests:test_assembler_timing` | `timing` | `timing`, `exclusive` | the gate, alone on the machine |
+| `//tests:test_synthetic` | `not slow` | | every tier |
+| `//tests:test_synthetic_slow` | `slow` | `slow` | the gate |
+
+`--config=fast` is `--test_tag_filters=-slow,-timing`. `--config=verify` never
+retries a failed test (`--flaky_test_attempts=1`), so a flaky test fails the
+gate instead of hiding. When you mark a test `slow`, make sure the file has a
+`_slow` target, or the test won't run anywhere.
 
 Each file in `tests/` is its own `py_test` target and ends with
 `if __name__ == "__main__": raise SystemExit(pytest.main([__file__, "-q"]))`,
@@ -75,8 +97,9 @@ imports.
   - A 300-item pool is solved to optimality given a generous 60 s budget. This
     is a regression test: at 50 ms per stage, the page's mean p was 0.75
     instead of 0.85.
-  - The 2 s default budget is enough for the same pool. This test depends on
-    the machine's speed.
+  - The 2 s default budget is enough for the same pool. This is the `timing`
+    test: it depends on the machine's speed, so it runs alone and only in the
+    gate.
 - **Fallback**: it respects the creator rule and reports what it can't meet. The
   incremental implementation matches a naive reference. It meets the bounds
   when an easy swap exists.

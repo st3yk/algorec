@@ -35,6 +35,7 @@ REGISTRIES = {
 }
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("registry_name", sorted(REGISTRIES))
 def test_criterion_1_mean_share_is_monotone_over_synthetic_users(registry_name):
     registry = REGISTRIES[registry_name]

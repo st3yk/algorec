@@ -188,6 +188,7 @@ def test_stage2_breaks_clarity_ties_by_relevance_regardless_of_pool_order():
         assert kept == ["l0"]
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("seed", range(20))
 def test_page_does_not_depend_on_pool_order_even_with_tied_scores(seed):
     rng = random.Random(seed)
@@ -303,6 +304,7 @@ def test_ilp_matches_brute_force_on_small_pools(seed):
 EPS = 0.03
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("sign", [+1, -1])
 def test_mean_realized_share_is_monotone_across_slider_points(sign):
     up, down = (EDUCATIONAL, LIGHT) if sign > 0 else (LIGHT, EDUCATIONAL)
@@ -351,6 +353,7 @@ def test_a_300_item_pool_is_solved_to_optimality_given_enough_time():
     assert sum(it.p for it in page.items) / P > 0.84
 
 
+@pytest.mark.timing
 def test_default_time_limit_solves_a_300_item_pool_to_optimality():
     from steerrec.synthetic import make_catalog
 

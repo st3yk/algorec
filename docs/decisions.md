@@ -25,6 +25,8 @@ and what building it taught us. Record new ones here when you make them.
 | **Shortfalls have a `kind` but no `reason`** | Reasons (`pool_exhausted`, `below_relevance`, …) come from the retrieval and filter stages, which don't exist yet. |
 | **Steered items go to `floor((j + 0.5)·n/k + 0.5)`** | Spreads them evenly. For example, 3 of 10 go to positions 2, 5, 8. |
 | **Bazel 9 with Bzlmod, one CPU-only PyPI hub, hermetic Python 3.12** | Reproducible builds. The system Python's scipy 1.8 has no `milp`. A GPU hub comes with the feature-extraction jobs. |
+| **Wall-clock tests run alone, in their own tier** | The 2 s default budget test depends on the machine. Under a loaded machine (a reviewer running tests in parallel) or a slower CI runner it can fail with correct code. The optimality property is checked with a 60 s budget in the normal tier, and only "the default is enough" stays wall-clock bound, tagged `timing` and `exclusive`. |
+| **Tiers are selected with pytest markers, not by moving tests** | Moving tests between files would churn history and docs. One `py_test` per tier over the same file, each with `-m`, keeps every test in one place and in exactly one target. |
 
 ## Findings from building the steering core
 

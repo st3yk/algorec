@@ -1,3 +1,13 @@
 # Local cache that survives `bazel clean`.
 common --disk_cache=~/.cache/bazel-disk
 test --test_output=errors
+
+# `--config=fast`: the inner loop. Skips heavy property tests and wall-clock tests.
+test:fast --test_tag_filters=-slow,-timing
+
+# `--config=verify`: the gate. Never retries a failing test, so flakes stay visible.
+test:verify --test_output=errors --flaky_test_attempts=1
+
+# `--config=ci`: the gate on a CI runner.
+common:ci --noshow_progress --color=no --curses=no
+test:ci --config=verify

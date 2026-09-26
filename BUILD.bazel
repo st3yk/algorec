@@ -9,6 +9,7 @@ compile_pip_requirements(
 
 exports_files([
     "mypy.ini",
+    "pytest.ini",
     "ruff.toml",
 ])
 
