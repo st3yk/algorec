@@ -32,6 +32,7 @@ filegroup(
         "//tools/conventions:all_files",
         "//tools/lint:all_files",
         "//tools/proto_compat:all_files",
+        "//tools/verify_lib:all_files",
     ],
     visibility = ["//visibility:public"],
 )

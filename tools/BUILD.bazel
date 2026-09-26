@@ -6,6 +6,7 @@ filegroup(
         "//tools/conventions:py_srcs",
         "//tools/lint:py_srcs",
         "//tools/proto_compat:py_srcs",
+        "//tools/verify_lib:py_srcs",
     ],
 )
 

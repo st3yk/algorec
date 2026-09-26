@@ -4,6 +4,29 @@ Every check that decides whether a change is good lives in this repository and
 runs through Bazel. Agents and humans run the same commands and get the same
 answer.
 
+## Branch checks
+
+These checks look at the commits between the merge-base and HEAD. They live in
+`tools/verify_lib/`.
+
+
+| Check | FAIL | NEEDS_HUMAN |
+|---|---|---|
+| `commits` | A subject that isn't `type(scope): summary` (types: feat, fix, test, refactor, build, chore, docs, perf, style, ci, revert), starts with a capital, or is over 72 characters; a WIP or `fixup!` commit; a merge commit; a lock-file change mixed with other files. | |
+| `docs` | A `feat`, `fix`, `perf` or `revert` commit that changes a source in `tools/verify_lib/docs_map.json` without changing its docs page in the same commit. | The same, with a `Docs-Unchanged: <reason>` trailer. The reason goes into the report. |
+| `guardrails` | The contract golden breaks against the base's golden, or was deleted. | A guardrail file changed (`tools/verify*`, `tools/verify_lib/`, `tools/conventions/`, `tools/lint/`, `tools/proto_compat/`, `tools/hooks/`, `tools/githooks/`, `tools/agent/`, `ruff.toml`, `mypy.ini`, `pytest.ini`, `.bazelrc`, `.claude/settings.json`, `.github/`, `CODEOWNERS`). A test function removed or renamed; an `assert`, `pytest.raises` or `pytest.approx` removed or changed; a decorator such as `parametrize` removed or changed; a skip or xfail added; a `py_test` rule removed or tagged `manual`; a line removed from the golden. |
+
+Test functions are compared by name across all test files, and asserts by
+their normalized source, so moving a test or reformatting an assert isn't a
+finding. `style`, `refactor`, `test`, `build`, `chore`, `docs` and `ci`
+commits claim no behavior change, so `docs` doesn't apply to them; the
+reviewer checks that claim.
+
+`tools/verify_lib/` runs under the system Python (3.10 or newer), so it uses
+only the standard library, and ruff checks it with `target-version = py310`.
+Its rules are tested by `//tools/verify_lib:selftest` on scratch git
+repositories.
+
 ## Lint and format
 
 | Target | What it checks |
