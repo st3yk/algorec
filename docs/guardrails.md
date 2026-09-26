@@ -233,7 +233,8 @@ repository. The ruleset requires a pull request and a green `verify` check
 (on an up-to-date branch), blocks force-pushes and deletion, and requires
 linear history. The required check must come from GitHub Actions
 (`integration_id` 15368), so a commit status posted through the API doesn't
-count. The repository admin can bypass the ruleset **only through a pull
+count. PRs can only be merged with a merge commit (`allowed_merge_methods:
+["merge"]`), so a PR's separate commits survive on `master`. The repository admin can bypass the ruleset **only through a pull
 request** (`bypass_mode: pull_request`): that is how a NEEDS_HUMAN change is
 merged on purpose, and it means even the admin's credentials can't push to
 `master` directly. Agents are never given `gh pr merge`.

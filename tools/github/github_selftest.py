@@ -119,5 +119,11 @@ def test_the_master_job_cannot_satisfy_the_required_check():
     assert "--post-merge" in text
 
 
+def test_prs_can_only_be_merged_with_a_merge_commit():
+    ruleset = json.loads(read("tools/github/ruleset.json"))
+    rules = {r["type"]: r.get("parameters", {}) for r in ruleset["rules"]}
+    assert rules["pull_request"]["allowed_merge_methods"] == ["merge"]
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
