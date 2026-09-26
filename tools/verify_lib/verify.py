@@ -33,6 +33,8 @@ from tools.verify_lib.report import (
 
 FAILED_TARGET = re.compile(r"^(//\S+)\s+.*\b(FAILED|TIMEOUT|NO STATUS|FLAKY|INCOMPLETE)\b", re.M)
 BAZEL_FAILURE_CODES = (1, 3)
+VERIFY_TEST_FLAGS = ("--test_output=errors", "--flaky_test_attempts=1")
+BASE_RULES_REJECT_CODES = (1, 2, 3)
 LOG_TAIL = 60
 BAZEL_ERROR_LINE = re.compile(r"^(ERROR|FAIL|FAILED)\b|^//\S+\s+.*\b(FAILED|TIMEOUT|NO STATUS|FLAKY)\b")
 
@@ -242,13 +244,17 @@ def base_guardrails_check(repo: str, wt: str, mb: str, sha: str) -> CheckResult:
     overlaid = overlay_base_guardrails(repo, wt, mb)
     if not overlaid:
         return CheckResult("base-guardrails", SKIP_STATUS, summary="the base has no guardrail files to judge with")
-    result = bazel_check("base-guardrails", wt, "test", "//...", "--config=verify")
-    if result.status == FAIL_STATUS:
-        result.status = HUMAN_STATUS
-        result.summary = "passes only with this branch's own guardrails; " + result.summary
-    elif result.status == PASS_STATUS:
-        result.summary = f"passes with the base's {len(overlaid)} guardrail files"
-    return result
+    code, out = bazel(wt, "test", "//...", *VERIFY_TEST_FLAGS)
+    if code == 0:
+        return CheckResult(
+            "base-guardrails", PASS_STATUS, summary=f"passes with the base's {len(overlaid)} guardrail files"
+        )
+    if code in BASE_RULES_REJECT_CODES:
+        summary = (
+            f"fails under the base's {len(overlaid)} guardrail files (bazel exit {code}): passes only by its own rules"
+        )
+        return CheckResult("base-guardrails", HUMAN_STATUS, summary=summary, log=bazel_errors(out))
+    return CheckResult("base-guardrails", ERROR_STATUS, summary=f"bazel exit {code}", log=bazel_errors(out))
 
 
 def flakes_check(wt: str, changed: list[str]) -> CheckResult:

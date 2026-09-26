@@ -44,7 +44,9 @@ status and time, every finding, and the command that reproduces it.
 5. **demo**: `bazel run //steerrec:demo -- --sweep-only` exits 0.
 6. **base-guardrails**, only if the branch changes a guardrail file: the
    base's copies of the guardrail files are put back into the checkout and
-   the tests run again. If they fail only there, the verdict is NEEDS_HUMAN:
+   the tests run again, with the verify flags given explicitly (the base's
+   `.bazelrc` may not define `--config=verify`). If Bazel rejects the branch
+   there (build, test or configuration failure), the verdict is NEEDS_HUMAN:
    the branch passes only by its own rules.
 7. **flakes**, with `--deep`: every test target that depends on a changed
    file runs 5 more times, uncached.
