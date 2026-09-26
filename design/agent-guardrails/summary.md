@@ -58,9 +58,11 @@ Each of these is now caught by a script, not by care.
   needs this branch merged and the skills updated.
 - **The skills** (`/algo-design-loop`, `/algo-build-loop`) aren't updated yet.
   The plan's follow-up section lists the changes.
-- **This PR's own verdict is `NEEDS_HUMAN` by design.** `master` has no judge
-  yet, so the branch judged itself, and it changes guardrail files. Once it is
-  merged, later PRs are judged by `master`'s copy.
+- **This PR isn't judged by its own gate.** `master` has no judge yet, so
+  the CI job skips with a notice (it would otherwise let the branch judge
+  itself), and this PR is reviewed by hand. Merge it with a merge or
+  rebase-merge (not a squash) to keep the separate commits. Every later PR,
+  including the fixes for the open findings, is judged by `master`'s copy.
 - **The `master` ruleset isn't applied.** Run
   `tools/github/apply_ruleset.sh --apply` after merging, so the `verify` check
   already exists.
