@@ -61,7 +61,7 @@ jobs:
             done
             git archive "$mb" $paths | tar -x -C "$judge"
             PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$judge" python3 -m tools.verify_lib.verify \
-              --repo "$GITHUB_WORKSPACE" --base "$BASE" --judge "base ${mb:0:12} (extracted by CI)"
+              --repo "$GITHUB_WORKSPACE" --base "$BASE"
           else
             tools/verify --base "$BASE"
           fi

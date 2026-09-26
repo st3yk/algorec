@@ -24,6 +24,19 @@ py_test(
     ],
 )
 
+py_test(
+    name = "gate_selftest",
+    size = "medium",
+    srcs = ["gate_selftest.py"],
+    data = [
+        ":verify_lib",
+        "//tools:verify",
+        "//tools/proto_compat:listing",
+    ],
+    main = "gate_selftest.py",
+    deps = ["@pypi//pytest"],
+)
+
 filegroup(
     name = "py_srcs",
     srcs = glob(["*.py"]),

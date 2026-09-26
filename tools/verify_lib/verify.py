@@ -148,7 +148,7 @@ def checkout(repo: str, wt: str, sha: str) -> None:
         gitutil.git(repo, "worktree", "prune")
         gitutil.git(repo, "worktree", "add", "--detach", "--force", wt, sha)
     gitutil.git(wt, "checkout", "--detach", "--force", sha)
-    gitutil.git(wt, "clean", "-fdq")
+    gitutil.git(wt, "clean", "-ffdxq")
 
 
 def overlay_base_guardrails(repo: str, wt: str, mb: str) -> list[str]:
@@ -182,10 +182,33 @@ def run_fast(repo: str) -> Report:
     return report
 
 
-def run_gate(repo: str, base: str, judge: str, deep: bool) -> Report:
+def judge_identity(repo: str, mb: str) -> tuple[str, bool]:
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(os.path.dirname(here))
+    base_files = [
+        p
+        for p in gitutil.ls_tree(repo, mb, "tools/verify_lib")
+        if p.endswith((".py", ".json")) and not p.endswith("_selftest.py")
+    ]
+    if not base_files:
+        return "this branch's own tools/verify_lib (the base has none)", False
+    if os.path.realpath(root) == os.path.realpath(repo):
+        return "this checkout's own tools/verify_lib, not the merge-base's", False
+    ours = {f"tools/verify_lib/{name}" for name in os.listdir(here) if name.endswith((".py", ".json"))}
+    ours = {p for p in ours if not p.endswith("_selftest.py")}
+    if ours != set(base_files):
+        return "a tools/verify_lib whose files differ from the merge-base's", False
+    for path in base_files:
+        with open(os.path.join(root, path), "rb") as f:
+            if f.read() != gitutil.show_bytes(repo, mb, path):
+                return f"a tools/verify_lib that differs from the merge-base's ({path})", False
+    return f"base {mb[:12]}: tools/verify_lib matches the merge-base byte for byte", True
+
+
+def run_gate(repo: str, base: str, deep: bool) -> Report:
     sha = gitutil.rev(repo, "HEAD")
     mode = "--deep" if deep else "gate"
-    report = Report(mode=mode, sha=sha, base=base, judge=judge)
+    report = Report(mode=mode, sha=sha, base=base)
     report.reproduce = f"git checkout {sha[:12]} && tools/verify{' --deep' if deep else ''} --base {base}"
     dirty = gitutil.dirty_tracked(repo)
     if dirty:
@@ -202,10 +225,21 @@ def run_gate(repo: str, base: str, judge: str, deep: bool) -> Report:
     except RuntimeError as e:
         report.checks.append(CheckResult("base", ERROR_STATUS, summary=str(e)))
         return report
-    mb = gitutil.merge_base(repo, base_sha, sha)
+    try:
+        mb = gitutil.merge_base(repo, base_sha, sha)
+    except RuntimeError:
+        report.checks.append(
+            CheckResult("base", ERROR_STATUS, summary=f"HEAD shares no history with {base} (shallow clone?)")
+        )
+        return report
     report.merge_base = mb
-    if judge.startswith("branch"):
-        report.findings.append(Finding("judge", HUMAN, "the base has no tools/verify, so this branch judged itself"))
+    if mb == sha:
+        summary = f"nothing to judge: HEAD is already in {base}. Pass the branch's real base with --base"
+        report.checks.append(CheckResult("base", ERROR_STATUS, summary=summary))
+        return report
+    report.judge, trusted = judge_identity(repo, mb)
+    if not trusted:
+        report.findings.append(Finding("judge", HUMAN, f"judged by {report.judge}"))
 
     commits = gitutil.commits(repo, mb, sha)
     changed = gitutil.changed_files(repo, mb, sha)
@@ -310,14 +344,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base", help="base ref (default: origin/master, then master)")
     parser.add_argument("--json", action="store_true", help="print the JSON report instead of text")
     parser.add_argument("--repo", help=argparse.SUPPRESS)
-    parser.add_argument("--judge", default="", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     repo = args.repo or gitutil.git(os.getcwd(), "rev-parse", "--show-toplevel").strip()
-    if args.fast:
-        report = run_fast(repo)
-    else:
-        base = args.base or default_base(repo)
-        report = run_gate(repo, base, args.judge or "branch (run directly, not through tools/verify)", args.deep)
+    try:
+        if args.fast:
+            report = run_fast(repo)
+        else:
+            report = run_gate(repo, args.base or default_base(repo), args.deep)
+    except Exception as e:
+        sha = gitutil.git(repo, "rev-parse", "HEAD", check=False).strip() or "0" * 40
+        report = Report(mode="--fast" if args.fast else "gate", sha=sha, base=args.base or "")
+        report.checks.append(CheckResult("verify", ERROR_STATUS, summary=f"{type(e).__name__}: {e}"))
     stem = write_report(repo, report)
     print(report.to_json() if args.json else render_text(report))
     if not args.json:

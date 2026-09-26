@@ -32,27 +32,29 @@ status and time, every finding, and the command that reproduces it.
 1. **clean-tree**: tracked files must be committed. The verdict is about a
    commit, not a working tree (untracked files are fine; they aren't in the
    checkout).
-2. **commits**, **docs**, **guardrails**: git-level checks over
+2. **base**: the base must resolve and share history with HEAD, and must
+   leave something to judge. `--base HEAD`, or any base that already
+   contains HEAD, is ERROR, not an empty PASS.
+3. **commits**, **docs**, **guardrails**: git-level checks over
    `merge-base..HEAD` (below).
-3. **build** and **test**: `bazel build //...` and
+4. **build** and **test**: `bazel build //...` and
    `bazel test //... --config=verify` (every tier, no retries), in a clean
    checkout of HEAD.
-4. **coverage**: every tracked file must be in `//:repo_files`, every tracked
+5. **coverage**: every tracked file must be in `//:repo_files`, every tracked
    `.py` file must be linted, and every `.py` file in `steerrec/` and `tools/`
    must be type-checked. A Bazel glob stops at package boundaries, so a new
    package that nobody adds to these lists would otherwise be invisible. The
    check asks Bazel which files the checks' input filegroups actually produce
    (`bazel cquery --output=files` on `//:repo_files` and on the `py_srcs`
    groups that lint and mypy read), not which files they depend on.
-
-5. **demo**: `bazel run //steerrec:demo -- --sweep-only` exits 0.
-6. **base-guardrails**, only if the branch changes a guardrail file: the
+6. **demo**: `bazel run //steerrec:demo -- --sweep-only` exits 0.
+7. **base-guardrails**, only if the branch changes a guardrail file: the
    base's copies of the guardrail files are put back into the checkout and
    the tests run again, with the verify flags given explicitly (the base's
    `.bazelrc` may not define `--config=verify`). If Bazel rejects the branch
    there (build, test or configuration failure), the verdict is NEEDS_HUMAN:
    the branch passes only by its own rules.
-7. **flakes**, with `--deep`: every test target that depends on a changed
+8. **flakes**, with `--deep`: every test target that depends on a changed
    file runs 5 more times, uncached.
 
 The clean checkout is a git worktree in
@@ -62,16 +64,30 @@ serializes gates on the same repository.
 
 ### Who judges
 
-`tools/verify` extracts `tools/verify_lib/` (and the stdlib-only contract
-listing it uses) from the **merge-base** and runs that copy. A branch can't
-loosen the commit, docs or guardrail rules that judge it. When the base has
-no `tools/verify` yet, the branch judges itself, and the verdict is at best
-NEEDS_HUMAN. `--fast` always uses the working tree's own copy.
+The `tools/verify` entry script (bash, no Python) extracts `tools/verify_lib/`
+(and the stdlib-only contract listing it uses) from the **merge-base** and
+runs that copy. A branch can't loosen the commit, docs or guardrail rules that
+judge it. `--fast` always uses the working tree's own copy.
 
-The entry script itself is the branch's copy, so a branch that edits it could
-skip this step. That edit is a guardrail change (NEEDS_HUMAN), agents can't
-make it (see `.claude/settings.json`), and CI extracts the base's judge on its
-own.
+The judge then checks its own identity: it compares its files byte for byte
+with the merge-base's `tools/verify_lib/` and writes the result into the
+report's `judge` line. Any mismatch (the base has no judge yet, or the judge
+running is the checkout's own copy or a modified one) adds a NEEDS_HUMAN
+finding.
+
+That check can't protect against a branch that replaces **both** the entry
+script and the judge, because then the branch's code writes the report. Two
+ways of running the gate can't be fooled by the branch:
+
+```sh
+git show origin/master:tools/verify | bash -s -- --base origin/master   # the base's entry script, locally
+```
+
+and the CI workflow, which extracts the base's judge in its own YAML. A local
+`tools/verify` PASS on a branch that touches `tools/verify` or
+`tools/verify_lib/` proves nothing until one of those two agrees. Both are
+tested end to end by `//tools/verify_lib:gate_selftest`, on scratch
+repositories with a stub `bazel`.
 
 ### PR descriptions: `tools/pr_body`
 

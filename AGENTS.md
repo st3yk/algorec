@@ -46,7 +46,9 @@ repository's contract. `tools/verify`'s exit code is the only definition of
 "good": never summarize a verdict from memory, paste the report.
 
 - verify-fast: `tools/verify --fast`
-- verify: `tools/verify --base origin/master`
+- verify: `tools/verify --base origin/master` (on a branch that touches
+  `tools/verify*`, run the base's entry instead:
+  `git show origin/master:tools/verify | bash -s -- --base origin/master`)
 - verify-deep: `tools/verify --deep --base origin/master`
 - design-dir: `design/<slug>/` (plan.md, build-log.md, review-log.md, summary.md)
 - start-build: `tools/agent/start_build.sh <slug>`

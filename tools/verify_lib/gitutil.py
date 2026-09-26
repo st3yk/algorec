@@ -64,6 +64,11 @@ def show(repo: str, ref: str, path: str) -> str | None:
 
 def ls_tree(repo: str, ref: str, *paths: str) -> list[str]:
     return git(repo, "ls-tree", "-r", "--name-only", ref, "--", *paths).split()
+def show_bytes(repo: str, ref: str, path: str) -> bytes | None:
+    result = subprocess.run(["git", "-C", repo, "show", f"{ref}:{path}"], capture_output=True)
+    return result.stdout if result.returncode == 0 else None
+
+
 
 
 def dirty_tracked(repo: str) -> list[str]:

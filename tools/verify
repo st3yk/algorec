@@ -1,4 +1,43 @@
 #!/usr/bin/env bash
-set -euo pipefail
-repo="$(git rev-parse --show-toplevel)"
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$repo${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m tools.verify_lib.bootstrap "$@"
+set -uo pipefail
+repo="$(git rev-parse --show-toplevel)" || exit 3
+export PYTHONDONTWRITEBYTECODE=1
+args=("$@")
+fast=0
+base=""
+for ((i = 0; i < ${#args[@]}; i++)); do
+  case "${args[i]}" in
+    --fast) fast=1 ;;
+    --base) base="${args[i + 1]:-}" ;;
+    --base=*) base="${args[i]#--base=}" ;;
+  esac
+done
+if [[ "$fast" == 1 ]]; then
+  PYTHONPATH="$repo" python3 -m tools.verify_lib.verify --repo "$repo" "${args[@]}"
+  exit $?
+fi
+if [[ -z "$base" ]]; then
+  for candidate in origin/master master origin/main main; do
+    if git -C "$repo" rev-parse -q --verify "$candidate^{commit}" >/dev/null; then
+      base="$candidate"
+      break
+    fi
+  done
+  args+=(--base "${base:-master}")
+fi
+judge="$(mktemp -d)"
+trap 'rm -rf "$judge"' EXIT
+mb="$(git -C "$repo" merge-base "$base" HEAD 2>/dev/null)"
+if [[ -n "$mb" ]] && git -C "$repo" cat-file -e "$mb:tools/verify_lib/verify.py" 2>/dev/null; then
+  paths=()
+  for p in tools/__init__.py tools/verify_lib tools/proto_compat/__init__.py tools/proto_compat/listing.py; do
+    if [[ -n "$(git -C "$repo" ls-tree --name-only "$mb" -- "$p")" ]]; then
+      paths+=("$p")
+    fi
+  done
+  git -C "$repo" archive "$mb" "${paths[@]}" | tar -x -C "$judge" || exit 3
+  (cd "$judge" && PYTHONPATH="$judge" python3 -m tools.verify_lib.verify --repo "$repo" "${args[@]}")
+else
+  PYTHONPATH="$repo" python3 -m tools.verify_lib.verify --repo "$repo" "${args[@]}"
+fi
+exit $?

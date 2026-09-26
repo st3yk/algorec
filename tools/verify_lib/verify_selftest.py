@@ -9,7 +9,6 @@ from collections.abc import Mapping
 import pytest
 
 from tools.verify_lib import gitutil
-from tools.verify_lib.bootstrap import base_arg, extract_judge
 from tools.verify_lib.commits import check_commits
 from tools.verify_lib.coverage import check_coverage, source_paths
 from tools.verify_lib.docs_changed import check_docs, docs_for, load_map
@@ -358,33 +357,6 @@ def test_the_report_names_the_sha_and_how_to_reproduce():
     assert "FAIL" in text and "aaaaaaaaaaaa" in text and "Reproduce: `tools/verify --base master`" in text
     assert report.exit_code == 1
     assert '"verdict": "FAIL"' in report.to_json()
-
-
-def test_base_arg_parsing():
-    assert base_arg(["--base", "origin/x"]) == "origin/x"
-    assert base_arg(["--deep", "--base=main"]) == "main"
-    assert base_arg(["--deep"]) is None
-
-
-def test_the_judge_is_extracted_from_the_given_ref(repo, tmp_path_factory):
-    repo.commit(
-        "chore: judge",
-        {
-            "tools/__init__.py": "",
-            "tools/verify_lib/__init__.py": "",
-            "tools/verify_lib/verify.py": "BASE = True\n",
-        },
-    )
-    base = repo.run("rev-parse", "HEAD").strip()
-    repo.commit("chore: tamper", {"tools/verify_lib/verify.py": "BASE = False\n"})
-    dest = str(tmp_path_factory.mktemp("judge"))
-    assert extract_judge(repo.path, base, dest)
-    with open(os.path.join(dest, "tools/verify_lib/verify.py")) as f:
-        assert f.read() == "BASE = True\n"
-
-
-def test_no_judge_is_extracted_from_a_ref_without_one(repo, tmp_path_factory):
-    assert not extract_judge(repo.path, "HEAD", str(tmp_path_factory.mktemp("judge")))
 
 
 def test_section_reads_one_markdown_section():

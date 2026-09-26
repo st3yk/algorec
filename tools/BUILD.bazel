@@ -19,3 +19,5 @@ filegroup(
     ),
     visibility = ["//:__pkg__"],
 )
+
+exports_files(["verify"])
