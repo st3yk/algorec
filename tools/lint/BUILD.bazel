@@ -71,7 +71,15 @@ py_test(
         "//tools:py_srcs",
     ],
     main = "mypy_test.py",
-    deps = ["@pypi//mypy"],
+    deps = [
+        "@pypi//mypy",
+        "@pypi//numpy",
+        "@pypi//protobuf",
+        "@pypi//pytest",
+        "@pypi//scipy",
+        "@pypi//types_protobuf",
+        "@rules_python//python/runfiles",
+    ],
 )
 
 filegroup(

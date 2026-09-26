@@ -16,8 +16,12 @@ def main() -> int:
     if r is None:
         print("runfiles not found", file=sys.stderr)
         return 1
+    descriptor = r.Rlocation(f"_main/{sys.argv[1]}")
+    if descriptor is None:
+        print(f"descriptor set {sys.argv[1]} not found in runfiles", file=sys.stderr)
+        return 1
     fds = descriptor_pb2.FileDescriptorSet()
-    with open(r.Rlocation(f"_main/{sys.argv[1]}"), "rb") as f:
+    with open(descriptor, "rb") as f:
         fds.ParseFromString(f.read())
     current = describe(fds)
     golden_path = os.path.join(os.environ["BUILD_WORKSPACE_DIRECTORY"], GOLDEN)

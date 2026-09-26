@@ -28,7 +28,9 @@ version is pinned like any other dependency.
 
 `//tools/lint:mypy` runs mypy over `steerrec/` and `tools/` with `mypy.ini`.
 Every function in `steerrec/` must be fully annotated (`disallow_untyped_defs`).
-Tests aren't type-checked.
+Tests aren't type-checked. mypy sees the real numpy, protobuf (via
+`types-protobuf`) and pytest types; only scipy, which ships no stubs for
+`scipy.optimize`, is treated as untyped.
 
 ## Conventions
 
