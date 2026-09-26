@@ -7,9 +7,9 @@ See docs/code/assembler.md.
 import logging
 import math
 import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Mapping, Optional, Sequence
 
 import numpy as np
 from scipy.optimize import Bounds as VarBounds
@@ -34,7 +34,7 @@ class ShortfallKind(Enum):
 class Shortfall:
     kind: ShortfallKind
     amount: float
-    dim_id: Optional[str] = None
+    dim_id: str | None = None
 
 
 @dataclass
@@ -92,7 +92,7 @@ def assemble(
     )
 
 
-def _solve_ilp(pool, bounds, registry, page_size, delta, deadline, solver) -> tuple[Optional[list[Item]], bool]:
+def _solve_ilp(pool, bounds, registry, page_size, delta, deadline, solver) -> tuple[list[Item] | None, bool]:
     n, nb = len(pool), len(bounds)
     nvar = n + nb + 1
     i_card = n + nb
@@ -231,14 +231,11 @@ def _swap_greedy(pool, u0, bounds, registry, page_size) -> list[Item]:
     refs = [b.reference * page_size for b in bounds]
 
     def not_worse_than_neutral(totals):
-        return all(
-            (t >= r - SLACK_TOL) if lo else (t <= r + SLACK_TOL) for t, r, lo in zip(totals, refs, lower)
-        )
+        return all((t >= r - SLACK_TOL) if lo else (t <= r + SLACK_TOL) for t, r, lo in zip(totals, refs, lower))
 
     def violation(totals):
         return sum(
-            w * (max(0.0, m - t) if lo else max(0.0, t - m))
-            for w, t, m, lo in zip(weights, totals, masses, lower)
+            w * (max(0.0, m - t) if lo else max(0.0, t - m)) for w, t, m, lo in zip(weights, totals, masses, lower)
         )
 
     page = list(u0)

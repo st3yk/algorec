@@ -49,12 +49,14 @@ def test_criterion_1_mean_share_is_monotone_over_synthetic_users(registry_name):
             if page.shortfalls:
                 continue
             q = lambda it, d: it.q_of(d)
-            rows.append({
-                "edu": sum(q(it, EDUCATIONAL) for it in page.items) / P,
-                "light": sum(q(it, LIGHT) for it in page.items) / P,
-                "pure_edu": sum(q(it, EDUCATIONAL) * (1 - q(it, LIGHT)) for it in page.items) / P,
-                "pure_light": sum(q(it, LIGHT) * (1 - q(it, EDUCATIONAL)) for it in page.items) / P,
-            })
+            rows.append(
+                {
+                    "edu": sum(q(it, EDUCATIONAL) for it in page.items) / P,
+                    "light": sum(q(it, LIGHT) for it in page.items) / P,
+                    "pure_edu": sum(q(it, EDUCATIONAL) * (1 - q(it, LIGHT)) for it in page.items) / P,
+                    "pure_light": sum(q(it, LIGHT) * (1 - q(it, EDUCATIONAL)) for it in page.items) / P,
+                }
+            )
         assert len(rows) >= 8, f"too many shortfall pages at s={s}"
         mean[s] = {k: sum(r[k] for r in rows) / len(rows) for k in rows[0]}
     right = [s for s in points if s >= 0]

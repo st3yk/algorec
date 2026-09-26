@@ -192,8 +192,12 @@ def test_stage2_breaks_clarity_ties_by_relevance_regardless_of_pool_order():
 def test_page_does_not_depend_on_pool_order_even_with_tied_scores(seed):
     rng = random.Random(seed)
     pool = [
-        Item(f"v{i:03d}", f"c{rng.randrange(30)}", round(rng.random(), 1),
-             q={EDUCATIONAL: round(rng.random(), 1), LIGHT: round(rng.random(), 1)})
+        Item(
+            f"v{i:03d}",
+            f"c{rng.randrange(30)}",
+            round(rng.random(), 1),
+            q={EDUCATIONAL: round(rng.random(), 1), LIGHT: round(rng.random(), 1)},
+        )
         for i in range(60)
     ]
     shuffled = pool[:]
@@ -226,7 +230,12 @@ def test_shortfall_page_is_never_below_neutral_minimal_case():
 def test_every_page_stays_on_the_slider_side_of_neutral(seed):
     rng = random.Random(seed)
     relevant = [
-        Item(f"r{i}", f"cr{i}", rng.uniform(0.7, 0.95), q={EDUCATIONAL: rng.uniform(0.4, 0.55), LIGHT: rng.uniform(0.8, 1.0)})
+        Item(
+            f"r{i}",
+            f"cr{i}",
+            rng.uniform(0.7, 0.95),
+            q={EDUCATIONAL: rng.uniform(0.4, 0.55), LIGHT: rng.uniform(0.8, 1.0)},
+        )
         for i in range(P)
     ]
     alternates = [
@@ -255,7 +264,8 @@ def brute_force(pool, bounds, page_size, delta):
             if len({it.creator_id for it in combo}) < k:
                 continue
             if not all(
-                (b.realized(combo) >= b.reference - 1e-9) if b.kind is BoundKind.LOWER_TOTAL
+                (b.realized(combo) >= b.reference - 1e-9)
+                if b.kind is BoundKind.LOWER_TOTAL
                 else (b.realized(combo) <= b.reference + 1e-9)
                 for b in bounds
             ):
@@ -367,13 +377,17 @@ def easy_pool():
 
 @pytest.mark.parametrize("stage", [0, 1, 2])
 def test_stage_hitting_limit_with_incumbent_uses_it_and_reports(stage):
-    page = assemble(easy_pool(), single_slider(1.0), DEFAULT_REGISTRY, P, solver=ScriptedSolver({stage: "limit_with_incumbent"}))
+    page = assemble(
+        easy_pool(), single_slider(1.0), DEFAULT_REGISTRY, P, solver=ScriptedSolver({stage: "limit_with_incumbent"})
+    )
     assert page.hit_time_limit and not page.used_fallback
     assert page.shortfalls == []
 
 
 def test_stage0_limit_without_incumbent_falls_back_to_greedy():
-    page = assemble(easy_pool(), single_slider(1.0), DEFAULT_REGISTRY, P, solver=ScriptedSolver({0: "limit_no_incumbent"}))
+    page = assemble(
+        easy_pool(), single_slider(1.0), DEFAULT_REGISTRY, P, solver=ScriptedSolver({0: "limit_no_incumbent"})
+    )
     assert page.hit_time_limit and page.used_fallback
 
 
@@ -489,7 +503,7 @@ def naive_swap_greedy(pool, u0, bounds, page_size):
             for cand in pool:
                 if cand.video_id in in_page or cand.creator_id in creators:
                     continue
-                trial = page[:out_idx] + [cand] + page[out_idx + 1:]
+                trial = page[:out_idx] + [cand] + page[out_idx + 1 :]
                 v = violation(trial)
                 key = (v, -sum(it.p for it in trial), out_idx, cand.video_id)
                 if v < current - SLACK_TOL and (best is None or key < best[0]):
