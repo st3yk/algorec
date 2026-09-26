@@ -52,6 +52,10 @@ Step 17 (dogfood run) is out of scope for this branch. It needs the merged pipel
 | 8 | The gate worktree lives in `~/.cache/steerrec-verify/<repo hash>/wt`, reports in `.verify/reports/` | `bazel-out` is a symlink into Bazel's output tree; a fixed worktree path keeps Bazel's analysis cache warm. | No |
 | 8 | The gate runs the branch's own guardrails, then a second pass with the base's guardrail files overlaid, instead of only the base's | Overlaying alone breaks a legitimate guardrail PR's build and hides whether the branch passes at all; two passes give FAIL vs NEEDS_HUMAN. | No |
 | 9 | `--deep` has flake re-runs only; mutation testing (mutmut) is not implemented | It needs a separate venv outside Bazel and minutes per module; left as a follow-up and stated in the PR. | No |
+| 6 | Collected-test comparison is replaced by runtime JUnit evidence (`evidence` check), added after the final review | It checks what actually ran at head, which static comparison can't. | No |
+| 12 | SessionStart prints each build log's whole "Current state" section, which contains "Next action" | Same information, one parser. | No |
+| 18 | The workflow's timeout is 30 min, not 20; it doesn't use `--config=ci` or upload `test.xml` | A cold CI cache needs more than 20 min for the full gate; the gate passes its own flags; the report artifact carries the failing test logs. | No |
+| 22 | No CI drill rows (push to master rejected, a test red only in CI) | They need the ruleset applied and a live PR; checked by hand after merge instead. | No |
 | 12 | The Stop and PostToolUse hooks report problems; they never reformat files themselves | An edit made behind the agent's back invalidates its view of the file. | No |
 | 13 | pre-commit checks the working copy of each staged file, not the staged blob | Simpler and fast; the gate checks the commit anyway. | No |
 | 18 | CI doesn't add a `needs-human` label | That needs a write token; a NEEDS_HUMAN run is red with an error annotation, and the job summary lists the reasons. | No |
