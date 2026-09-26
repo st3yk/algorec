@@ -1,0 +1,84 @@
+// The contract between the application backend and the steerrec recommender.
+// Field semantics, validation rules and what is implemented today:
+// docs/service-contract.md.
+
+syntax = "proto3";
+
+package steerrec.v1;
+
+service Recommender {
+  rpc GetNextBatch(GetNextBatchRequest) returns (GetNextBatchResponse);
+  rpc ReportImpressions(ReportImpressionsRequest) returns (ReportImpressionsResponse);
+}
+
+message GetNextBatchRequest {
+  string user_id = 1;
+  string request_id = 2;
+  uint32 batch_size = 3;
+  map<string, float> control = 4;
+  repeated string exclude_video_ids = 5;
+  ColdStartHints cold_start = 6;
+}
+
+message ColdStartHints {
+  repeated string topic_ids = 1;
+}
+
+message GetNextBatchResponse {
+  string batch_id = 1;
+  repeated RecommendedVideo videos = 2;
+  repeated Shortfall shortfalls = 3;
+  string registry_version = 4;
+}
+
+message RecommendedVideo {
+  string video_id = 1;
+  uint32 position = 2;
+  SlotType slot_type = 3;
+  map<string, float> dimension_scores = 4;
+  repeated string strong_dims = 5;
+}
+
+enum SlotType {
+  SLOT_TYPE_UNSPECIFIED = 0;
+  ASSEMBLED = 1;
+  EXPLORATION = 2;
+  FALLBACK = 3;
+}
+
+message Shortfall {
+  string dim_id = 1;
+  float amount = 2;
+  Reason reason = 3;
+
+  enum Reason {
+    REASON_UNSPECIFIED = 0;
+    LOW_SUPPLY = 1;
+    POOL_EXHAUSTED = 2;
+    BELOW_RELEVANCE = 3;
+    CREATOR_DIVERSITY = 4;
+    CONFLICTING_TARGETS = 5;
+  }
+}
+
+message ReportImpressionsRequest {
+  string user_id = 1;
+  repeated Impression impressions = 2;
+}
+
+message Impression {
+  string batch_id = 1;
+  string video_id = 2;
+  int64 viewed_at_unix_ms = 3;
+  float watch_seconds = 4;
+  bool commented = 5;
+  bool liked = 6;
+  repeated DimensionFeedback feedback = 7;
+}
+
+message DimensionFeedback {
+  string dim_id = 1;
+  bool disagrees = 2;
+}
+
+message ReportImpressionsResponse {}

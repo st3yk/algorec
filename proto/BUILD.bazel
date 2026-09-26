@@ -1,0 +1,9 @@
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
+
+package(default_visibility = ["//visibility:public"])
+
+proto_library(
+    name = "recommender_proto",
+    srcs = ["steerrec/v1/recommender.proto"],
+    strip_import_prefix = "/proto",
+)

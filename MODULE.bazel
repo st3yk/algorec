@@ -1,5 +1,6 @@
 module(name = "steerrec")
 
+bazel_dep(name = "protobuf", version = "36.2")
 bazel_dep(name = "rules_python", version = "2.3.4")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
