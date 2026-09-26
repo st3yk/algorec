@@ -99,12 +99,26 @@ def _module_code(text: str) -> Counter[str]:
         if i == len(tree.body) - 1 and _is_main_guard(node):
             continue
         source = ast.unparse(node)
-        if isinstance(node, ast.Assign | ast.AnnAssign) and not re.search(r"\b(pytest|mark|skip|xfail)\b", source):
+        if (
+            isinstance(node, ast.Assign | ast.AnnAssign)
+            and not re.search(r"\b(pytest|mark|skip|xfail)\b", source)
+            and not _rebinds_a_test(node)
+        ):
             continue
         if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
             continue
         out[source] += 1
     return out
+
+
+def _rebinds_a_test(node: ast.Assign | ast.AnnAssign) -> bool:
+    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+    for target in targets:
+        if not isinstance(target, ast.Name):
+            return True
+        if target.id.startswith(("test", "Test", "pytest")):
+            return True
+    return False
 
 
 def _is_main_guard(node: ast.stmt) -> bool:

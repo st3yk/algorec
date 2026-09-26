@@ -98,11 +98,20 @@ Bazel setup. It narrows what a branch can fake, but it can't rule it out:
 - **Pinned Bazel.** The judge runs Bazel with `BAZELISK_SKIP_WRAPPER=1`, so a
   `tools/bazel` wrapper is ignored, and with the merge-base's `.bazelversion`.
 - **Runtime evidence.** Every test function in the head's test files must have
-  a passed JUnit result from this run (the `evidence` check). The root
-  `conftest.py` makes pytest write those results where Bazel asks, and every
-  pytest target lists it in `data`. Test logs are deleted before the run, so
-  old results can't stand in. A test that exits early, is skipped by any
-  spelling, or never runs fails the gate.
+  a passed JUnit result from this run (the `evidence` check), and that result
+  must come from that very `def`. The root `conftest.py` makes pytest write
+  the results where Bazel asks, and records each test's code location
+  (`defined_at`: file and first line, which for a decorated function is its
+  first decorator); every pytest target lists it in `data`. Test logs are
+  deleted before the run, so old results can't stand in.
+  - A test that never runs, exits early, or fails: FAIL.
+  - A result from somewhere else, such as a module-level
+    `globals()["test_x"] = lambda: None` that replaced the real test: FAIL.
+  - A result with no `defined_at`: FAIL, with a hint that the target is
+    probably missing `//:conftest.py` in its `data`.
+  - A test that is skipped (or xfail) in every run: accepted when the skip is
+    already in the merge-base's copy of the test or file, and NEEDS_HUMAN when
+    it is new.
 - **Flagged setup files.** Changes to `tools/bazel`, `.bazelversion`,
   `.bazeliskrc`, `MODULE.bazel`, any `.bzl` file, any `conftest.py`, or the
   `load()` lines of an existing BUILD file are NEEDS_HUMAN.
@@ -136,7 +145,7 @@ repository is marked "not a commit here".
 |---|---|---|
 | `commits` | A subject that isn't `type(scope): summary` (git's own `Revert "type: …"` subject is accepted) (types: feat, fix, test, refactor, build, chore, docs, perf, style, ci, revert), starts with a capital, or is over 72 characters; a WIP or `fixup!` commit; a merge commit; a lock-file change mixed with other files. | |
 | `docs` | A `feat`, `fix`, `perf` or `revert` commit that changes a source in `tools/verify_lib/docs_map.json` (Python modules, `.proto` files, `tools/verify`, `.claude/` and `.github/`; not BUILD files or the golden) without changing its docs page in the same commit. | The same, with a `Docs-Unchanged: <reason>` trailer. The reason goes into the report. |
-| `guardrails` | The contract golden breaks against the base's golden, or was deleted. | A guardrail file changed (`tools/verify`, `tools/pr_body`, `tools/verify_drill`, `tools/setup.sh`, `tools/github/`, `tools/verify_lib/`, `tools/conventions/`, `tools/lint/`, `tools/proto_compat/`, `tools/hooks/`, `tools/githooks/`, `tools/agent/`, any `conftest.py`, `tools/bazel`, `.bazelversion`, `.bazeliskrc`, `MODULE.bazel`, any `.bzl` file, `ruff.toml`, `mypy.ini`, `pytest.ini`, `.bazelrc`, `.claude/settings.json`, `.github/`, `CODEOWNERS`). A test function that gains a `return`. Module-level code added to a test file other than imports, definitions, plain assignments and the file's final `if __name__ == "__main__": raise SystemExit(...)` footer (an `if` or `raise` anywhere else, or an assignment that mentions `pytest`, `mark`, `skip` or `xfail`). A change to the `load()` lines of an existing BUILD file. In test files (everything under `tests/`, `conftest.py`, `test_*.py`, `*_test.py`, `*_selftest.py`): a function removed or renamed (test or helper); an `assert`, `pytest.raises` or `pytest.approx` removed or changed in any function; a decorator such as `parametrize` removed or changed; a skip or xfail added (also through `from pytest import mark`); a module-level assignment removed or changed, such as a tolerance constant; a module-wide `pytestmark` added. In BUILD files: a `py_test` rule removed, tagged `manual`, or changed in how it runs (`env`, `args`, `main`, `srcs`, …). A line removed from the golden. |
+| `guardrails` | The contract golden breaks against the base's golden, or was deleted. | A guardrail file changed (`tools/verify`, `tools/pr_body`, `tools/verify_drill`, `tools/setup.sh`, `tools/github/`, `tools/verify_lib/`, `tools/conventions/`, `tools/lint/`, `tools/proto_compat/`, `tools/hooks/`, `tools/githooks/`, `tools/agent/`, any `conftest.py`, `tools/bazel`, `.bazelversion`, `.bazeliskrc`, `MODULE.bazel`, any `.bzl` file, `ruff.toml`, `mypy.ini`, `pytest.ini`, `.bazelrc`, `.claude/settings.json`, `.github/`, `CODEOWNERS`). A test function that gains a `return`. Module-level code added to a test file other than imports, definitions, plain assignments and the file's final `if __name__ == "__main__": raise SystemExit(...)` footer (an `if` or `raise` anywhere else, an assignment that mentions `pytest`, `mark`, `skip` or `xfail`, or one whose target isn't a plain name or whose name starts with `test`, `Test` or `pytest`, which could rebind a test). A change to the `load()` lines of an existing BUILD file. In test files (everything under `tests/`, `conftest.py`, `test_*.py`, `*_test.py`, `*_selftest.py`): a function removed or renamed (test or helper); an `assert`, `pytest.raises` or `pytest.approx` removed or changed in any function; a decorator such as `parametrize` removed or changed; a skip or xfail added (also through `from pytest import mark`; the `evidence` check then also reports it as newly skipped); a module-level assignment removed or changed, such as a tolerance constant; a module-wide `pytestmark` added. In BUILD files: a `py_test` rule removed, tagged `manual`, or changed in how it runs (`env`, `args`, `main`, `srcs`, …). A line removed from the golden. |
 
 Functions are compared by name across all test files, and asserts by their
 normalized source, so moving a test or reformatting an assert isn't a

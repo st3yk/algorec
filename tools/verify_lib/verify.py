@@ -298,7 +298,7 @@ def run_gate(repo: str, base: str, deep: bool) -> Report:
             clear_testlogs(wt)
             report.checks.append(timed("test", lambda: bazel_check("test", wt, "test", "//...", "--config=verify")))
             found = check_evidence(
-                required_tests(head_files, lambda p: gitutil.show(repo, sha, p)),
+                required_tests(head_files, lambda p: gitutil.show(repo, sha, p), lambda p: gitutil.show(repo, mb, p)),
                 collect_results(os.path.join(wt, "bazel-testlogs")),
             )
             report.checks.append(findings_check("evidence", found))

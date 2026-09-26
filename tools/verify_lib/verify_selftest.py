@@ -12,7 +12,7 @@ from tools.verify_lib import gitutil
 from tools.verify_lib.commits import check_commits
 from tools.verify_lib.coverage import check_coverage, source_paths
 from tools.verify_lib.docs_changed import check_docs, docs_for, load_map
-from tools.verify_lib.evidence import required_tests
+from tools.verify_lib.evidence import Expected, required_tests
 from tools.verify_lib.findings import FAIL, HUMAN, Finding
 from tools.verify_lib.gitutil import Commit
 from tools.verify_lib.guardrails import check_guardrails, is_guardrail
@@ -328,6 +328,23 @@ def test_a_new_test_file_with_the_standard_footer_is_not_flagged(repo):
     assert guard(repo, {"tests/test_new.py": new}) == []
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        'globals()["test_a"] = lambda: None',
+        "test_b = lambda: None",
+        "vars()['test_b'] = print",
+    ],
+)
+def test_rebinding_a_test_at_module_level_asks_a_human(repo, line):
+    head = TEST_FILE + "\n" + line + "\n"
+    assert any("module-level code added" in m for m in messages(guard(repo, {"tests/test_x.py": head})))
+
+
+def test_a_plain_module_constant_is_not_flagged(repo):
+    assert guard(repo, {"tests/test_x.py": "LIMIT = 3\n" + TEST_FILE}) == []
+
+
 def test_a_skip_alias_asks_a_human(repo):
     head = "_off = pytest.mark.skip\n" + TEST_FILE.replace("def test_b():", "@_off\ndef test_b():")
     assert any("module-level code added" in m for m in messages(guard(repo, {"tests/test_x.py": head})))
@@ -348,7 +365,17 @@ def test_required_tests_cover_module_and_class_tests():
         "def test_a():\n    pass\n\n\ndef helper():\n    pass\n\n\nclass TestK:\n    def test_b(self):\n        pass\n"
     )
     files = {"tests/test_x.py": text, "tests/conftest.py": "def test_no():\n    pass\n", "steerrec/a.py": text}
-    assert required_tests(list(files), files.get) == {("tests.test_x", "test_a"), ("tests.test_x.TestK", "test_b")}
+    assert set(required_tests(list(files), files.get)) == {("tests.test_x", "test_a"), ("tests.test_x.TestK", "test_b")}
+
+
+def test_required_tests_record_the_first_decorator_line_and_base_skips():
+    head = (
+        "import pytest\n\n\n@pytest.mark.parametrize('x', [1])\ndef test_a(x):\n    pass\n\n\ndef test_b():\n    pass\n"
+    )
+    base = "import pytest\n\n\n@pytest.mark.skip\ndef test_a():\n    pass\n"
+    expected = required_tests(["tests/test_x.py"], {"tests/test_x.py": head}.get, {"tests/test_x.py": base}.get)
+    assert expected[("tests.test_x", "test_a")] == Expected("tests/test_x.py:4", True)
+    assert expected[("tests.test_x", "test_b")] == Expected("tests/test_x.py:9", False)
 
 
 GOLDEN = "message p.M\nfield p.M 1 a optional TYPE_STRING json=a\n"
