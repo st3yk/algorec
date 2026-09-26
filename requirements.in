@@ -5,3 +5,4 @@ pytest
 ruff
 mypy
 protobuf
+types-protobuf
