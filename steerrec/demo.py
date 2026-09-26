@@ -4,10 +4,8 @@
     bazel run //steerrec:demo -- --slider 0.7 --seed 3
     bazel run //steerrec:demo -- --sweep-only
 
-For each slider value it prints the assembled page (items marked * are on the
-page only because of steering, i.e. they are not in the unsteered page U0),
-the targets derived from the slider, and any shortfall. It ends with a sweep
-table showing how the page's mix and relevance change across the slider.
+Items marked * are on the page only because of steering (not in the unsteered
+page U0). See docs/code/synthetic-and-demo.md.
 """
 
 import argparse
@@ -85,7 +83,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--seed", type=int, default=0, help="synthetic catalog seed")
     parser.add_argument("--pool-size", type=int, default=300, help="number of candidate items")
     parser.add_argument("--page-size", type=int, default=10)
-    parser.add_argument("--delta", type=float, default=0.02, help="stage-2 relevance tolerance (plan: 0.02)")
+    parser.add_argument("--delta", type=float, default=0.02, help="stage-2 relevance tolerance")
     parser.add_argument("--sweep-only", action="store_true", help="print only the sweep table")
     args = parser.parse_args(argv)
 

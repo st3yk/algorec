@@ -1,7 +1,7 @@
-"""Dimension registry (plan Step 8), reduced to what steering needs.
+"""Dimension registry: steering parameters per content dimension, control
+validation, and the single Fun <-> Learn slider mapping.
 
-Adding a dimension means adding a registry entry (plus, in the full system, a
-rubric, gold labels and a scoring head). Everything downstream iterates over it.
+See docs/code/items-and-registry.md.
 """
 
 import math
@@ -12,18 +12,6 @@ from typing import Iterable, Mapping
 
 @dataclass(frozen=True)
 class Dimension:
-    """Steering parameters for one content dimension.
-
-    Attributes:
-        dim_id: Stable key, used in the control map and in Item.q.
-        t_max: How high the slider may push the expected share when this
-            dimension is pushed up (plan Step 8; starting guess 0.6).
-        t_min: How low the slider may push the exclusive share when this
-            dimension is pushed down (starting guess 0.1).
-        priority: Weight of this dimension's slack in stage 0 (>= 1).
-        tau: "Strongly d" threshold, used only for display labels.
-    """
-
     dim_id: str
     t_max: float = 0.6
     t_min: float = 0.1
@@ -40,8 +28,6 @@ class Dimension:
 
 
 class Registry:
-    """An ordered, immutable set of dimensions keyed by id."""
-
     def __init__(self, dimensions: Iterable[Dimension]):
         self._dims: dict[str, Dimension] = {}
         for d in dimensions:
@@ -61,23 +47,20 @@ class Registry:
         return iter(self._dims.values())
 
     def validate_control(self, control: Mapping[str, float]) -> dict[str, float]:
-        """Clamp each slider to [-1, 1]; reject unknown dimensions and NaN (plan Step 21)."""
         unknown = set(control) - set(self._dims)
         if unknown:
             raise ValueError(f"unknown dimension(s) in control: {sorted(unknown)}")
         out = {}
         for dim_id, s in control.items():
-            # Any real number (including numpy scalars) is fine; strings and bool are not.
             if isinstance(s, bool) or not isinstance(s, numbers.Real):
                 raise ValueError(f"control[{dim_id}] must be a number, got {s!r}")
             s = float(s)
-            if math.isnan(s):  # max/min would silently turn NaN into +1 ("maximum learning")
+            if math.isnan(s):
                 raise ValueError(f"control[{dim_id}] is NaN")
             out[dim_id] = max(-1.0, min(1.0, s))
         return out
 
     def check_scores(self, q: Mapping[str, float]) -> None:
-        """Reject score keys the registry doesn't know: a typo would silently read as q = 0."""
         unknown = set(q) - set(self._dims)
         if unknown:
             raise ValueError(f"unknown dimension(s) in item scores: {sorted(unknown)}")
@@ -90,5 +73,4 @@ DEFAULT_REGISTRY = Registry([Dimension(EDUCATIONAL), Dimension(LIGHT)])
 
 
 def single_slider(s: float) -> dict[str, float]:
-    """The PoC's one "Fun <-> Learn" slider: s_edu = s, s_light = -s (plan Step 14)."""
     return {EDUCATIONAL: s, LIGHT: -s}

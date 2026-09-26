@@ -1,4 +1,4 @@
-"""Minimal, video-free core of the steerable short-video recommender.
+"""steerrec: the steering core of a user-steerable short-video recommender.
 
-See README.md for the idea and short-content-recsys-design/plan.md for the full design.
+See NORTH_STAR.md for the direction and docs/README.md for how it works.
 """

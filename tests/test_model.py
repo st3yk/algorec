@@ -67,7 +67,7 @@ def test_unknown_score_keys_rejected():
 def test_item_scores_are_read_only_and_items_hashable():
     scores = {EDUCATIONAL: 0.5}
     it = Item("v", "c", 0.5, q=scores)
-    scores[EDUCATIONAL] = 0.9  # mutating the caller's dict doesn't leak in
+    scores[EDUCATIONAL] = 0.9
     assert it.q_of(EDUCATIONAL) == 0.5
     with pytest.raises(TypeError):
         it.q[EDUCATIONAL] = 0.9

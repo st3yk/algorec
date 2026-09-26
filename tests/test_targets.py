@@ -28,13 +28,10 @@ def random_pool(rng: random.Random, n: int, n_creators: int) -> list[Item]:
     ]
 
 
-# --- U0 (Step 13) ---------------------------------------------------------------
-
-
 def test_unsteered_page_is_top_p_by_relevance_one_per_creator():
     pool = [
         Item("a", "c1", 0.9),
-        Item("b", "c1", 0.8),  # same creator as "a": skipped
+        Item("b", "c1", 0.8),
         Item("c", "c2", 0.7),
         Item("d", "c3", 0.1),
     ]
@@ -54,9 +51,9 @@ def test_identical_duplicates_are_kept_once():
 @pytest.mark.parametrize(
     "other",
     [
-        Item("a", "c2", 0.5, q={EDUCATIONAL: 0.1}),  # different creator
-        Item("a", "c1", 0.6, q={EDUCATIONAL: 0.1}),  # different p
-        Item("a", "c1", 0.5, q={EDUCATIONAL: 0.9}),  # different q
+        Item("a", "c2", 0.5, q={EDUCATIONAL: 0.1}),
+        Item("a", "c1", 0.6, q={EDUCATIONAL: 0.1}),
+        Item("a", "c1", 0.5, q={EDUCATIONAL: 0.9}),
     ],
 )
 def test_conflicting_duplicates_raise_in_either_order(other):
@@ -85,18 +82,11 @@ def test_unsteered_page_matches_brute_force_definition(seed):
     assert unsteered_page(pool, P) == expected
 
 
-# --- exclusive mass (Step 14) -----------------------------------------------------
-
-
 def test_exclusive_mass_formula():
     it = Item("v", "c", 0.5, q={EDUCATIONAL: 0.7, LIGHT: 0.9})
     assert exclusive_mass(it, LIGHT, pushed_up=(EDUCATIONAL,)) == pytest.approx(0.9 * 0.3)
     assert exclusive_mass(it, LIGHT, pushed_up=()) == pytest.approx(0.9)
-    # A dimension is never "exclusive of" itself.
     assert exclusive_mass(it, EDUCATIONAL, pushed_up=(EDUCATIONAL,)) == pytest.approx(0.7)
-
-
-# --- bounds (Step 14) -------------------------------------------------------------
 
 
 def test_neutral_control_has_no_bounds():
@@ -140,12 +130,10 @@ def test_full_slider_reaches_the_registry_end_points():
 
 
 def test_reference_beyond_end_point_keeps_target_at_reference():
-    # U0 is already more educational than T_max: pushing up must not lower the target.
     u0 = [Item(f"v{i}", f"c{i}", 0.5, q={EDUCATIONAL: 0.9, LIGHT: 0.01}) for i in range(P)]
     for s in (0.1, 0.5, 1.0):
         bounds = {b.dim_id: b for b in compute_bounds(single_slider(s), u0, DEFAULT_REGISTRY, P)}
         assert bounds[EDUCATIONAL].target == pytest.approx(0.9)
-        # Exclusive light share (0.01 * 0.1 = 0.001) is already below T_min.
         assert bounds[LIGHT].target == pytest.approx(0.001)
 
 
@@ -157,8 +145,6 @@ def test_shares_are_normalized_by_page_size_not_pool_size():
 
 @pytest.mark.parametrize("s", [0.5, -0.5, 0.25, -0.8])
 def test_targets_interpolate_linearly_in_abs_s(s):
-    # Chosen so every reference lies strictly between the end points, for both signs:
-    # u_edu = 0.4, u_light = 0.5, ubar_light = 0.5 * 0.6 = 0.3, ubar_edu = 0.4 * 0.5 = 0.2.
     q_edu, q_light = 0.4, 0.5
     u0 = [Item(f"v{i}", f"c{i}", 0.5, q={EDUCATIONAL: q_edu, LIGHT: q_light}) for i in range(P)]
     bounds = {b.dim_id: b for b in compute_bounds(single_slider(s), u0, DEFAULT_REGISTRY, P)}
@@ -168,7 +154,7 @@ def test_targets_interpolate_linearly_in_abs_s(s):
     ubar = q[down] * (1 - q[up])
     t_hi = max(DEFAULT_REGISTRY[up].t_max, u)
     t_lo = min(DEFAULT_REGISTRY[down].t_min, ubar)
-    assert t_hi > u and ubar > t_lo  # both halves actually interpolate
+    assert t_hi > u and ubar > t_lo
     assert bounds[up].target == pytest.approx(u + abs(s) * (t_hi - u))
     assert bounds[down].target == pytest.approx(ubar - abs(s) * (ubar - t_lo))
 
@@ -185,13 +171,13 @@ def test_dimension_at_zero_is_unconstrained_and_not_pushed_up():
 def test_bounds_reject_bad_inputs():
     with pytest.raises(ValueError):
         compute_bounds(single_slider(0.5), [Item("v", "c", 0.5, q={"educationl": 0.5})], DEFAULT_REGISTRY, P)
-    with pytest.raises(ValueError):  # longer than the page
+    with pytest.raises(ValueError):
         compute_bounds(single_slider(0.5), [Item(f"v{i}", f"c{i}", 0.5) for i in range(P + 1)], DEFAULT_REGISTRY, P)
-    with pytest.raises(ValueError):  # repeated item
+    with pytest.raises(ValueError):
         compute_bounds(single_slider(0.5), [Item("v", "c", 0.5)] * 2, DEFAULT_REGISTRY, P)
-    with pytest.raises(ValueError):  # repeated creator
+    with pytest.raises(ValueError):
         compute_bounds(single_slider(0.5), [Item("v", "c", 0.5), Item("w", "c", 0.5)], DEFAULT_REGISTRY, P)
-    with pytest.raises(ValueError):  # bool is not a page size
+    with pytest.raises(ValueError):
         compute_bounds(single_slider(0.5), [], DEFAULT_REGISTRY, True)
 
 

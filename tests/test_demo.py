@@ -13,7 +13,7 @@ def test_demo_runs_and_prints_pages_and_sweep(capsys):
     out = capsys.readouterr().out
     assert "slider s = +0.50" in out
     assert "=== sweep" in out
-    assert out.count("\n  +") + out.count("\n  -") >= 11  # 11 sweep rows
+    assert out.count("\n  +") + out.count("\n  -") >= 11
 
 
 def test_demo_marks_steered_items():
