@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec "$(git rev-parse --show-toplevel)/tools/hooks/run" commit_msg "$1"

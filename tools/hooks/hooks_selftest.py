@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from tools.hooks import on_stop, post_edit, quick, session_start
+from tools.hooks import commit_msg, on_stop, post_edit, quick, session_start
 
 ENV = {
     "GIT_AUTHOR_NAME": "t",
@@ -110,6 +110,21 @@ def test_session_start_prints_the_build_log_state(repo, capsys):
     assert session_start.main() == 0
     out = capsys.readouterr().out
     assert "branch master" in out and "- Next: M2" in out and "## Milestones" not in out
+
+
+@pytest.mark.parametrize(
+    "message, code",
+    [
+        ("feat(assembler): add a thing\n\nWhy.\n", 0),
+        ("update stuff\n", 1),
+        ("# a comment line git strips\nfix: handle x\n", 0),
+    ],
+)
+def test_commit_msg_applies_the_gate_rules(repo, monkeypatch, message, code):
+    monkeypatch.chdir(repo)
+    path = repo / "MSG"
+    path.write_text(message)
+    assert commit_msg.main(str(path)) == code
 
 
 if __name__ == "__main__":
