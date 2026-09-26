@@ -329,17 +329,16 @@ It takes a finished plan in `design/<slug>/plan.md` and:
 
 1. creates the worktree `.claude/worktrees/<slug>` on a new branch
    `feat/<slug>` from `origin/master`;
-2. commits the design folder (`docs(design): add the <slug> plan`), pushes,
-   and opens a **draft** PR whose body comes from `tools/pr_body`;
+2. commits the design folder (`docs(design): add the <slug> plan`). It
+   pushes nothing: the branch reaches GitHub only when
+   `tools/agent/open_pr.sh` finds it ready;
 3. unless `--gate`, starts `claude -p "/algo-build-loop design/<slug>/plan.md
    --autonomous" --permission-mode acceptEdits` in the background, logging to
    `~/.cache/steerrec-agent/<slug>.log`.
 
 `--dry-run` prints every command instead of running it. The script refuses a
 bad slug or arguments (exit 64), a missing plan (66), and a branch that already
-exists locally, on `origin`, or as a worktree (73). With the git hooks
-enabled, the push runs the gate, so the draft PR appears after one gate run
-rather than at once. Its behavior is tested by `//tools/agent:selftest`.
+exists locally, on `origin`, or as a worktree (73). Its behavior is tested by `//tools/agent:selftest`.
 
 ## Lint and format
 

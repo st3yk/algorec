@@ -48,8 +48,9 @@ def run(repo, *args: str) -> subprocess.CompletedProcess[str]:
 def test_dry_run_prints_every_step_and_changes_nothing(repo):
     result = run(repo, "demo", "--dry-run")
     assert result.returncode == 0, result.stderr
-    for step in ("worktree add", "commit", "push", "gh pr create --draft", "claude -p"):
+    for step in ("worktree add", "commit", "claude -p"):
         assert step in result.stdout
+    assert " push" not in result.stdout and "gh pr" not in result.stdout
     assert not (repo / ".claude").exists()
     assert "feat/demo" not in subprocess.run(["git", "-C", str(repo), "branch"], capture_output=True, text=True).stdout
 

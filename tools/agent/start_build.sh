@@ -33,8 +33,6 @@ design="$repo/design/$slug"
 branch="feat/$slug"
 wt="$repo/.claude/worktrees/$slug"
 log_dir="${XDG_CACHE_HOME:-$HOME/.cache}/steerrec-agent"
-title="$(sed -n 's/^# //p' "$design/plan.md" | head -1)"
-title="${title:-$slug}"
 
 run() {
   if [[ "$dry_run" == 1 ]]; then
@@ -59,18 +57,9 @@ run mkdir -p "$wt/design"
 run cp -R "$design" "$wt/design/"
 run git -C "$wt" add "design/$slug"
 run git -C "$wt" commit --quiet -m "docs(design): add the $slug plan" -m "The vetted plan this branch implements."
-run git -C "$wt" push --quiet -u origin "$branch"
-if [[ "$dry_run" == 1 ]]; then
-  run gh pr create --draft --head "$branch" --title "$title" --body-file "<tools/pr_body $slug>"
-else
-  body="$(mktemp)"
-  (cd "$wt" && tools/pr_body "$slug" --base "$base") > "$body"
-  (cd "$wt" && gh pr create --draft --head "$branch" --title "$title" --body-file "$body")
-  rm -f "$body"
-fi
 
 if [[ "$gate" == 1 ]]; then
-  echo "--gate: stopping after the plan-only draft PR. Start the build with:"
+  echo "--gate: stopping before the build. Nothing is pushed until tools/agent/open_pr.sh finds it ready. Start the build with:"
   echo "  (cd $wt && claude -p '/algo-build-loop design/$slug/plan.md --autonomous' --permission-mode acceptEdits)"
   exit 0
 fi
