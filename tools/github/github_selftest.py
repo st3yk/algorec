@@ -58,5 +58,43 @@ def test_the_workflow_extracts_the_judge_from_the_merge_base():
     assert "python3 -m tools.verify_lib.verify" in text
 
 
+GATEKEEPER = ".github/workflows/gatekeeper.yml"
+
+
+def job(text: str, name: str) -> str:
+    start = text.index(f"\n  {name}:\n")
+    rest = text[start + 1 :]
+    following = re.search(r"\n  [a-z]+:\n", rest[len(name) + 3 :])
+    return rest[: following.start() + len(name) + 3] if following else rest
+
+
+def test_prs_are_judged_only_by_the_gatekeeper_from_the_default_branch():
+    assert "pull_request:" not in read(WORKFLOW)
+    text = read(GATEKEEPER)
+    assert re.search(r"^on:\n  pull_request_target:\n", text, re.M)
+    assert re.search(r"^permissions: \{\}\n", text, re.M)
+
+
+def test_the_judging_job_is_read_only_and_leaves_no_credentials_or_caches():
+    verify = job(read(GATEKEEPER), "verify")
+    assert "    permissions:\n      contents: read\n" in verify and "write" not in verify
+    assert "persist-credentials: false" in verify and "cache-save: false" in verify
+    assert "ref: ${{ github.event.pull_request.head.sha }}" in verify
+    assert 'git merge-base "$BASE" HEAD' in verify and "tools/verify --base" not in verify
+
+
+def test_the_writing_job_never_touches_the_prs_code():
+    enforce = job(read(GATEKEEPER), "enforce")
+    assert "pull-requests: write" in enforce
+    for forbidden in ("actions/checkout", "bazel ", "verify_lib", "python3", "git ", "bash ", "./"):
+        assert forbidden not in enforce, forbidden
+    assert "gh pr ready" in enforce and "--undo" in enforce and "--add-label needs-human" in enforce
+
+
+def test_every_gatekeeper_action_is_pinned_to_a_commit():
+    uses = re.findall(r"uses:\s*(\S+)", read(GATEKEEPER))
+    assert uses and all(re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", u) for u in uses), uses
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

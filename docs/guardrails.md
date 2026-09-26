@@ -170,37 +170,44 @@ only the standard library, and ruff checks it with `target-version = py310`.
 Its rules are tested by `//tools/verify_lib:selftest` on scratch git
 repositories.
 
-## On GitHub: the `verify` workflow
+## On GitHub: the gatekeeper and the `verify` workflow
 
-`.github/workflows/verify.yml` runs the same judge on every pull request, every
-push to `master`, and on demand. It adds no checks of its own.
+Two workflows run the same judge. Neither adds checks of its own.
 
-1. It checks out the PR's head commit (not GitHub's merge commit) with full
-   history, and restores the Bazel caches with `bazel-contrib/setup-bazel`.
-2. It extracts `tools/verify_lib/` from the merge-base **itself**, in YAML,
-   and runs that copy, so a PR that edits `tools/verify` can't change the
-   judge. The base is the PR's base branch, the previous `master` commit on a
-   push, and the default branch on a manual run. When the merge-base has no
-   `tools/verify_lib/` (the PR that introduces the judge), there is no trusted
-   judge, so the job **skips** with a notice instead of letting the branch
-   judge itself: that PR is reviewed by hand, and every later PR is judged by
-   the merged copy.
-3. The Markdown report goes into the job summary, and the JSON and Markdown
-   reports are uploaded as the `verify-report` artifact.
-4. The check is green on `PASS`, and on the bootstrap skip above. `FAIL`,
-   `NEEDS_HUMAN` and `ERROR` are red; the error annotation says which.
+**`.github/workflows/gatekeeper.yml`** judges every pull request. It runs on
+`pull_request_target`, so GitHub always uses the **default branch's** copy of
+the workflow: a PR that edits it changes nothing until it's merged. It has two
+jobs, so that PR code never runs next to a write token:
 
-It has read-only permissions and uses no secrets, so pull requests from forks
-are safe to run. Third-party actions are pinned by commit SHA.
+1. **`verify`** (read-only: `contents: read`, no persisted credentials, no
+   cache saves) checks out the PR's head commit with full history, extracts
+   `tools/verify_lib/` from the merge-base, and runs that copy. The Markdown
+   report goes into the job summary, and the reports are uploaded as the
+   `verify-report` artifact. This job is the required `verify` check: green on
+   `PASS` (and on the bootstrap skip below), red on `FAIL`, `NEEDS_HUMAN` and
+   `ERROR`.
+2. **`enforce`** (`pull-requests: write`, `issues: write`) never checks out or
+   runs the PR's code. It reads the verdict and kind from job 1 and:
+   - `PASS`: removes the `needs-human` label;
+   - soft `NEEDS_HUMAN`: adds the `needs-human` label, and the PR stays ready
+     for a human to review;
+   - hard `NEEDS_HUMAN`, `FAIL`, `ERROR`, or no verdict: turns the PR back
+     into a draft and comments with a link to the run.
 
-**Its limit:** on `pull_request`, GitHub runs the workflow file **from the PR's
-branch**. A PR that edits `verify.yml` can make the `verify` check green
-without running the judge. The judge flags a workflow edit as NEEDS_HUMAN,
-but only if the workflow still runs it. CODEOWNERS only labels such PRs;
-it isn't enforced, because the ruleset requires no reviews. So until the
-workflow moves to `pull_request_target` (the base's YAML, checking out the
-head SHA read-only), **a green check on a PR that touches `.github/` is not
-evidence**: read the diff. That's acceptable while only the owner merges.
+So a PR on GitHub is only ever "ready" when the judge says so, however it was
+opened.
+
+When the merge-base has no `tools/verify_lib/` (the PR that introduces the
+judge), there is no trusted judge, so `verify` **skips** with a notice
+instead of letting the branch judge itself. That PR is reviewed by hand, and
+every later PR is judged by the merged copy.
+
+**`.github/workflows/verify.yml`** runs the same judge on every push to
+`master` (against the previous `master` commit) and on demand (against the
+default branch). It doesn't run on pull requests.
+
+Both use read-only access to the code, no secrets, and third-party actions
+pinned by commit SHA.
 
 ### Protecting `master`
 

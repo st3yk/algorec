@@ -8,6 +8,7 @@ compile_pip_requirements(
 )
 
 exports_files([
+    ".github/workflows/gatekeeper.yml",
     ".github/workflows/verify.yml",
     "conftest.py",
     "mypy.ini",
