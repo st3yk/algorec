@@ -489,14 +489,15 @@ def test_verdicts(statuses, levels, verdict):
         ([Finding("docs", HUMAN, "trailer")], ["pass"], "soft"),
         ([Finding("guardrails", HUMAN, "test changed")], ["pass"], "soft"),
         ([Finding("guardrails", HUMAN, "guardrail change", hard=True)], ["pass"], "hard"),
-        ([Finding("docs", HUMAN, "trailer")], ["needs_human"], "hard"),
+        ([Finding("docs", HUMAN, "trailer")], ["needs_human"], "soft"),
+        ([Finding("docs", HUMAN, "trailer")], ["base-guardrails:needs_human"], "hard"),
         ([], ["pass"], ""),
         ([Finding("x", FAIL, "bad"), Finding("guardrails", HUMAN, "g", hard=True)], ["pass"], ""),
     ],
 )
 def test_needs_human_is_soft_unless_a_hard_finding_or_check_says_otherwise(findings, checks, kind):
     report = Report(mode="gate", sha="a" * 40)
-    report.checks = [CheckResult(f"c{i}", s) for i, s in enumerate(checks)]
+    report.checks = [CheckResult(*c.split(":")) if ":" in c else CheckResult(f"c{i}", c) for i, c in enumerate(checks)]
     report.findings = findings
     assert report.human_kind == kind
     assert report.to_dict()["human_kind"] == kind

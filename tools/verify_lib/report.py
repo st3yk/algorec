@@ -13,6 +13,7 @@ ERROR_STATUS = "error"
 SKIP_STATUS = "skip"
 
 VERDICTS = {"PASS": 0, "FAIL": 1, "NEEDS_HUMAN": 2, "ERROR": 3}
+HARD_CHECKS = ("base-guardrails",)
 
 
 @dataclass
@@ -44,7 +45,8 @@ class Report:
     def human_kind(self) -> str:
         if self.verdict != "NEEDS_HUMAN":
             return ""
-        if any(c.status == HUMAN_STATUS for c in self.checks) or any(f.hard for f in self.findings if f.level == HUMAN):
+        hard_check = any(c.status == HUMAN_STATUS and c.name in HARD_CHECKS for c in self.checks)
+        if hard_check or any(f.hard for f in self.findings if f.level == HUMAN):
             return "hard"
         return "soft"
 

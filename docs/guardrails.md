@@ -29,6 +29,10 @@ and after the verdict in text and Markdown:
 |---|---|---|
 | `soft` | Only findings where the change is probably fine and a human should look: an edited existing test, a removed or renamed test, a new skip, module-level code in a test file, a `Docs-Unchanged:` trailer, lines removed from the golden. | The PR may be opened ready for review, labelled `needs-human`. |
 | `hard` | Any finding where the judge can't vouch for the change: a guardrail file changed, a `py_test` rule removed, tagged `manual` or changed in how it runs, a BUILD file's `load()` lines changed, the judge isn't the merge-base's copy, or the tests fail under the base's guardrails. | No PR. A human applies the change. |
+
+The kind comes from the findings: the `guardrails` and `docs` checks take their
+NEEDS_HUMAN status from their findings, so a soft finding keeps them soft. The
+only check that is hard in itself is `base-guardrails`.
 | 3 | `ERROR` | The judge couldn't run: uncommitted changes, an unknown base, or Bazel crashed. Never read it as PASS. |
 
 Each run writes `.verify/reports/<sha>.json` and `.md` (ignored by git). The
