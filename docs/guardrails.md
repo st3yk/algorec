@@ -234,18 +234,35 @@ These give fast feedback. None of them decides the verdict; `tools/verify` does.
 | Hook | Runs | What it does |
 |---|---|---|
 | Claude Code `PostToolUse` (`Edit`, `Write`) | after each file edit | `tools/hooks/run post_edit`: ruff and the convention rules on that one file. Problems go straight back to the agent (exit 2). About 0.1 s: it calls the ruff binary directly, found once through `bazel info output_base` and cached in `.verify/ruff-path`. |
-| Claude Code `Stop` | when the agent tries to finish | `tools/hooks/run on_stop`: runs `tools/verify --fast` unless the working tree is unchanged since its last green run (a fingerprint of HEAD, the diff and untracked files, in `.verify/last-fast-green`). A failure sends the agent back with the failing lines. A retry (`stop_hook_active`) is let through, so it can't loop. |
+| Claude Code `PreToolUse` (`Bash`) | before each shell command | `tools/hooks/run pre_bash`: rejects `git push` with a `+` or `:` refspec, `--force*`, `--mirror`, `--all`, `--delete`, `--prune`, a destination outside `feat/*`, or no explicit remote and branch (exit 2). |
+| Claude Code `Stop` | when the agent tries to finish | `tools/hooks/run on_stop`: runs `tools/verify --fast` unless the working tree is unchanged since its last run (a fingerprint of HEAD, the diff and untracked files). A green result is remembered in `.verify/last-fast-green`; a red one in `.verify/last-fast-red`, so an unchanged red tree is sent back with the cached failure instead of a 20 s re-run. A retry (`stop_hook_active`) is let through, so it can't loop. |
 | Claude Code `SessionStart` | at session start and resume | `tools/hooks/run session_start`: prints the branch, `git status`, and the "Current state" of every `design/*/build-log.md`. |
 | git `commit-msg` | each commit | The gate's `commits` rules on the message being written. |
 | git `pre-commit` | each commit | ruff and the convention rules on the staged Python files (it reads the working copy of each staged file). |
-| git `pre-push` | each push | The gate. `PASS` and `NEEDS_HUMAN` push; `FAIL` and `ERROR` don't. |
+| git `pre-push` | each push | Refuses a push to `master` or `main`, or of a commit other than HEAD, then runs the gate on HEAD. `PASS` and `NEEDS_HUMAN` push; `FAIL` and `ERROR` don't. |
 
 Enable the git hooks once per clone with `tools/setup.sh`
 (`core.hooksPath = tools/githooks`). The Claude Code hooks are in
 `.claude/settings.json`.
 
-The hook scripts run under the system Python (3.10 or newer), use only the
-standard library, and are tested by `//tools/hooks:selftest`.
+Each hook finds its repository from the event (the edited file's path, or the
+session's `cwd`) with `git rev-parse --show-toplevel`, not from
+`$CLAUDE_PROJECT_DIR`, so it checks the right tree inside a worktree. The hook
+scripts run under the system Python (3.10 or newer), use only the standard
+library, and are tested by `//tools/hooks:selftest`.
+
+## Agent permissions: a speed bump, not a boundary
+
+`.claude/settings.json` allows the commands the build loop needs and denies
+some that it never should (pushing to `master`, force pushes, `--no-verify`,
+`gh pr merge`, editing lock files, the golden and the guardrail files). The
+Claude Code docs are explicit that Bash rules match the command as written,
+not the program: another spelling of the same command isn't matched. And
+`bazel test`, `bazel run`, `tools/verify` and the git hooks all execute code
+from the branch, so an agent that wants to edit a denied file can do it
+through them. The rules stop honest mistakes and make the intended path the
+easy one. What actually protects `master` is the ruleset, and what actually
+judges a change is `tools/verify` run by the base's entry script or by CI.
 
 ## Starting a build: `tools/agent/start_build.sh`
 

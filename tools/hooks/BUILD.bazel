@@ -22,6 +22,7 @@ py_test(
     data = [
         "//:conftest.py",
         "//:pytest.ini",
+        "//tools:githooks/pre-push",
     ],
     main = "hooks_selftest.py",
     deps = [

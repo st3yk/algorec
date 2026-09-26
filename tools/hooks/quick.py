@@ -8,6 +8,15 @@ import subprocess
 from tools.conventions.conventions import check_python
 
 RUFF_CACHE = os.path.join(".verify", "ruff-path")
+BAZEL_INFO_TIMEOUT_S = 5
+
+
+def toplevel(path: str) -> str | None:
+    start = path if os.path.isdir(path) else os.path.dirname(path) or "."
+    while not os.path.isdir(start):
+        start = os.path.dirname(start)
+    result = subprocess.run(["git", "-C", start, "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def ruff_bin(repo: str) -> str | None:
@@ -19,7 +28,12 @@ def ruff_bin(repo: str) -> str | None:
             return path
     except OSError:
         pass
-    result = subprocess.run(["bazel", "info", "output_base"], cwd=repo, capture_output=True, text=True)
+    try:
+        result = subprocess.run(
+            ["bazel", "info", "output_base"], cwd=repo, capture_output=True, text=True, timeout=BAZEL_INFO_TIMEOUT_S
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     if result.returncode != 0:
         return None
     matches = sorted(glob.glob(os.path.join(result.stdout.strip(), "external", "*pypi*ruff*", "bin", "ruff")))

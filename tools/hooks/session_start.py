@@ -2,10 +2,13 @@
 current state of any build log on this branch, for resumed sessions. See docs/guardrails.md."""
 
 import glob
+import json
 import os
 import re
 import subprocess
 import sys
+
+from tools.hooks.quick import toplevel
 
 
 def git(repo: str, *args: str) -> str:
@@ -18,7 +21,11 @@ def current_state(text: str) -> str:
 
 
 def main() -> int:
-    repo = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    try:
+        event = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError, OSError):
+        event = {}
+    repo = toplevel(event.get("cwd") or os.getcwd()) or os.getcwd()
     branch = git(repo, "branch", "--show-current") or "(detached)"
     lines = [f"steerrec: branch {branch} at {git(repo, 'rev-parse', '--short', 'HEAD')}"]
     status = git(repo, "status", "--short")

@@ -7,7 +7,10 @@ import os
 import subprocess
 import sys
 
+from tools.hooks.quick import toplevel
+
 STAMP = os.path.join(".verify", "last-fast-green")
+RED = os.path.join(".verify", "last-fast-red")
 MAX_REPORT_LINES = 40
 
 
@@ -34,24 +37,39 @@ def main() -> int:
         event = {}
     if event.get("stop_hook_active"):
         return 0
-    repo = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
-    stamp = os.path.join(repo, STAMP)
+    repo = toplevel(event.get("cwd") or os.getcwd())
+    if repo is None or not os.path.exists(os.path.join(repo, "tools", "verify")):
+        return 0
+    stamp, red = os.path.join(repo, STAMP), os.path.join(repo, RED)
     current = fingerprint(repo)
-    try:
-        with open(stamp, encoding="utf-8") as f:
-            if f.read().strip() == current:
-                return 0
-    except OSError:
-        pass
+    if read(stamp) == current:
+        return 0
+    cached = read(red)
+    if cached.startswith(current + "\n"):
+        return block(cached.split("\n", 1)[1])
     result = subprocess.run([os.path.join(repo, "tools", "verify"), "--fast"], cwd=repo, capture_output=True, text=True)
+    os.makedirs(os.path.dirname(stamp), exist_ok=True)
     if result.returncode == 0:
-        os.makedirs(os.path.dirname(stamp), exist_ok=True)
         with open(stamp, "w", encoding="utf-8") as f:
             f.write(current)
         return 0
-    lines = (result.stdout + result.stderr).strip().splitlines()
+    report = "\n".join((result.stdout + result.stderr).strip().splitlines()[:MAX_REPORT_LINES])
+    with open(red, "w", encoding="utf-8") as f:
+        f.write(current + "\n" + report)
+    return block(report)
+
+
+def read(path: str) -> str:
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def block(report: str) -> int:
     print("tools/verify --fast fails on your changes; fix them before finishing:", file=sys.stderr)
-    print("\n".join(lines[:MAX_REPORT_LINES]), file=sys.stderr)
+    print(report, file=sys.stderr)
     return 2
 
 

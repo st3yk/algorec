@@ -21,4 +21,7 @@ filegroup(
     visibility = ["//:__pkg__"],
 )
 
-exports_files(["verify"])
+exports_files([
+    "githooks/pre-push",
+    "verify",
+])

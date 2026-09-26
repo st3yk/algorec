@@ -4,10 +4,13 @@ import io
 import json
 import os
 import subprocess
+from collections.abc import Mapping
 
 import pytest
 
-from tools.hooks import commit_msg, on_stop, post_edit, quick, session_start
+from tools.hooks import commit_msg, on_stop, post_edit, pre_bash, quick, session_start
+
+RUNFILES = os.path.join(os.environ.get("TEST_SRCDIR", ""), "_main")
 
 ENV = {
     "GIT_AUTHOR_NAME": "t",
@@ -46,7 +49,7 @@ def test_an_inline_comment_is_reported(repo):
     assert len(problems) == 1 and "[no-comments]" in problems[0]
 
 
-def run_post_edit(monkeypatch, event: dict[str, object]) -> int:
+def run_post_edit(monkeypatch, event: Mapping[str, object]) -> int:
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
     return post_edit.main()
 
@@ -85,7 +88,7 @@ def failing_verify(repo) -> None:
 
 def test_stop_lets_a_retry_through(repo, monkeypatch):
     failing_verify(repo)
-    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"stop_hook_active": True})))
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"stop_hook_active": True, "cwd": str(repo)})))
     assert on_stop.main() == 0
 
 
@@ -93,18 +96,98 @@ def test_stop_skips_verify_on_an_unchanged_green_tree(repo, monkeypatch):
     failing_verify(repo)
     (repo / ".verify").mkdir()
     (repo / ".verify" / "last-fast-green").write_text(on_stop.fingerprint(str(repo)))
-    monkeypatch.setattr("sys.stdin", io.StringIO("{}"))
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"cwd": str(repo)})))
     assert on_stop.main() == 0
 
 
 def test_stop_blocks_when_verify_fails(repo, monkeypatch, capsys):
     failing_verify(repo)
-    monkeypatch.setattr("sys.stdin", io.StringIO("{}"))
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"cwd": str(repo)})))
     assert on_stop.main() == 2
     assert "FAIL test (fast)" in capsys.readouterr().err
 
 
-def test_session_start_prints_the_build_log_state(repo, capsys):
+def test_stop_caches_a_red_result_for_an_unchanged_tree(repo, monkeypatch):
+    tools = repo / "tools"
+    tools.mkdir()
+    (tools / "verify").write_text(f"#!/bin/sh\necho run >> {repo}/.git/verify-runs\necho 'FAIL x'\nexit 1\n")
+    (tools / "verify").chmod(0o755)
+    for _ in range(2):
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"cwd": str(repo)})))
+        assert on_stop.main() == 2
+    assert (repo / ".git" / "verify-runs").read_text().count("run") == 1
+
+
+def test_post_edit_checks_the_repo_the_file_is_in(repo, monkeypatch, capsys):
+    nested = repo / "nested"
+    subprocess.run(["git", "init", "-q", str(nested)], check=True)
+    (nested / "steerrec").mkdir()
+    (nested / "docs").mkdir()
+    (nested / "docs" / "page.md").write_text("# Page\n")
+    (nested / "steerrec" / "b.py").write_text('"""B. See docs/page.md."""\n\nX = 1  # why\n')
+    event = {"tool_input": {"file_path": "nested/steerrec/b.py"}, "cwd": str(repo)}
+    assert run_post_edit(monkeypatch, event) == 2
+    assert "steerrec/b.py" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push origin feat/x",
+        "git push -u origin feat/x",
+        "git push origin feat/x:feat/x",
+        "git status && git push origin feat/a-b.c",
+        "echo git push origin master",
+    ],
+)
+def test_the_push_guard_allows_feature_branch_pushes(command):
+    assert pre_bash.push_problems(command) == []
+
+
+@pytest.mark.parametrize(
+    "command, fragment",
+    [
+        ("git push origin master", "only feat/*"),
+        ("git push origin feat/x +HEAD:master", "force push"),
+        ("git push origin feat/x :master", "deletes a remote branch"),
+        ("git push origin feat/x feat/x:refs/heads/master", "only feat/*"),
+        ("git push origin feat/x --mirror", "--mirror"),
+        ("git push --force origin feat/x", "--force"),
+        ("git push --force-with-lease origin feat/x", "--force-with-lease"),
+        ("git push origin", "name the remote"),
+        ("git -C . push origin HEAD:master", "only feat/*"),
+        ("FOO=1 git push origin main", "only feat/*"),
+    ],
+)
+def test_the_push_guard_rejects_everything_else(command, fragment):
+    problems = pre_bash.push_problems(command)
+    assert problems and any(fragment in p for p in problems), problems
+
+
+def pre_push(repo, verify_code: int, stdin: str) -> int:
+    tools = repo / "tools"
+    tools.mkdir(exist_ok=True)
+    (tools / "verify").write_text(f"#!/bin/sh\nexit {verify_code}\n")
+    (tools / "verify").chmod(0o755)
+    hook = os.path.join(RUNFILES, "tools/githooks/pre-push")
+    return subprocess.run(["bash", hook], cwd=repo, input=stdin, capture_output=True, text=True).returncode
+
+
+@pytest.mark.parametrize("verdict, allowed", [(0, True), (2, True), (1, False), (3, False)])
+def test_pre_push_follows_the_verdict(repo, verdict, allowed):
+    head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    stdin = f"refs/heads/feat/x {head} refs/heads/feat/x {'0' * 40}\n"
+    assert (pre_push(repo, verdict, stdin) == 0) is allowed
+
+
+def test_pre_push_refuses_the_default_branch_and_other_commits(repo):
+    head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    assert pre_push(repo, 0, f"refs/heads/master {head} refs/heads/master {'0' * 40}\n") == 1
+    assert pre_push(repo, 0, f"refs/heads/feat/x {'1' * 40} refs/heads/feat/x {'0' * 40}\n") == 1
+
+
+def test_session_start_prints_the_build_log_state(repo, capsys, monkeypatch):
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"cwd": str(repo)})))
     (repo / "design" / "x").mkdir(parents=True)
     (repo / "design" / "x" / "build-log.md").write_text("# Log\n\n## Current state\n\n- Next: M2\n\n## Milestones\n")
     assert session_start.main() == 0

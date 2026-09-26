@@ -5,7 +5,7 @@ import json
 import os
 import sys
 
-from tools.hooks.quick import check_files
+from tools.hooks.quick import check_files, toplevel
 
 
 def main() -> int:
@@ -14,9 +14,14 @@ def main() -> int:
     except json.JSONDecodeError:
         return 0
     path = (event.get("tool_input") or {}).get("file_path") or ""
-    repo = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
-    rel = os.path.relpath(os.path.realpath(path), os.path.realpath(repo)) if path else ""
-    if not rel or rel.startswith(".."):
+    if not path:
+        return 0
+    path = os.path.join(event.get("cwd") or os.getcwd(), path)
+    repo = toplevel(path)
+    if repo is None:
+        return 0
+    rel = os.path.relpath(os.path.realpath(path), os.path.realpath(repo))
+    if rel.startswith(".."):
         return 0
     problems = check_files(repo, [rel])
     if not problems:
