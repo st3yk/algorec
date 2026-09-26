@@ -20,6 +20,8 @@ filegroup(
         exclude = [
             ".git/**",
             ".claude/**",
+            ".verify/**",
+            "**/__pycache__/**",
             "bazel-*/**",
         ],
     ) + [

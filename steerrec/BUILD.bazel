@@ -76,6 +76,9 @@ filegroup(
 
 filegroup(
     name = "all_files",
-    srcs = glob(["**"]),
+    srcs = glob(
+        ["**"],
+        exclude = ["**/__pycache__/**"],
+    ),
     visibility = ["//:__pkg__"],
 )
