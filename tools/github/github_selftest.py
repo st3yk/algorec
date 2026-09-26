@@ -35,16 +35,23 @@ def test_every_action_is_pinned_to_a_commit():
     assert uses and all(re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", u) for u in uses), uses
 
 
-def test_the_workflow_is_read_only_and_names_the_required_check():
+def test_the_master_workflow_is_read_only():
     text = read(WORKFLOW)
     assert re.search(r"^permissions:\n  contents: read\n", text, re.M)
-    assert "write" not in text.split("jobs:")[0]
-    assert re.search(r"^  verify:\n", text, re.M)
+    assert "write" not in text
 
 
-@pytest.mark.parametrize("forbidden", ["HEAD~1", "--judge", "secrets.", "tools/verify --base"])
+def test_the_required_check_comes_from_the_gatekeeper():
+    assert re.search(r"^  verify:\n", read(GATEKEEPER), re.M)
+
+
+@pytest.mark.parametrize("forbidden", ["--judge", "secrets.", "tools/verify --base"])
 def test_the_workflow_never_judges_against_its_own_history_or_uses_secrets(forbidden):
     assert forbidden not in read(WORKFLOW)
+
+
+def test_a_pr_is_never_judged_against_its_own_history():
+    assert "HEAD~1" not in read(GATEKEEPER) and "HEAD^" not in read(GATEKEEPER)
 
 
 def test_a_base_without_a_judge_is_skipped_not_judged_by_the_branch():
@@ -101,6 +108,15 @@ def test_the_extracted_judge_runs_from_its_own_directory(workflow):
     text = read(workflow)
     runs = re.findall(r"^( *)(.*python3 -m tools\.verify_lib\.verify.*)$", text, re.M)
     assert runs and all('(cd "$judge" && ' in line for _, line in runs), runs
+
+
+def test_the_master_job_cannot_satisfy_the_required_check():
+    text = read(WORKFLOW)
+    assert re.search(r"^on:\n  push:\n    branches: \[master\]\n\n", text, re.M)
+    on_block = text.split("\non:\n", 1)[1].split("\n\n", 1)[0]
+    assert on_block == "  push:\n    branches: [master]" and "pull_request" not in text
+    assert re.search(r"^  verify-master:\n", text, re.M) and not re.search(r"^  verify:\n", text, re.M)
+    assert "--post-merge" in text
 
 
 if __name__ == "__main__":

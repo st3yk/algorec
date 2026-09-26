@@ -229,11 +229,12 @@ def judge_identity(repo: str, mb: str) -> tuple[str, bool]:
     return f"base {mb[:12]}: tools/verify_lib matches the merge-base byte for byte", True
 
 
-def run_gate(repo: str, base: str, deep: bool) -> Report:
+def run_gate(repo: str, base: str, deep: bool, post_merge: bool = False) -> Report:
     sha = gitutil.rev(repo, "HEAD")
-    mode = "--deep" if deep else "gate"
+    mode = "--deep" if deep else "--post-merge" if post_merge else "gate"
     report = Report(mode=mode, sha=sha, base=base)
-    report.reproduce = f"git checkout {sha[:12]} && tools/verify{' --deep' if deep else ''} --base {base}"
+    flag = " --deep" if deep else " --post-merge" if post_merge else ""
+    report.reproduce = f"git checkout {sha[:12]} && tools/verify{flag} --base {base}"
     dirty = gitutil.dirty_tracked(repo)
     if dirty:
         report.checks.append(
@@ -283,6 +284,9 @@ def run_gate(repo: str, base: str, deep: bool) -> Report:
         lambda p: gitutil.show(repo, sha, p),
     )
     for name, found in (("commits", commit_findings), ("docs", docs_findings), ("guardrails", guard_findings)):
+        if post_merge:
+            report.checks.append(CheckResult(name, SKIP_STATUS, summary="checked on the pull request before merging"))
+            continue
         report.checks.append(findings_check(name, found))
         report.findings += found
 
@@ -298,7 +302,11 @@ def run_gate(repo: str, base: str, deep: bool) -> Report:
             clear_testlogs(wt)
             report.checks.append(timed("test", lambda: bazel_check("test", wt, "test", "//...", "--config=verify")))
             found = check_evidence(
-                required_tests(head_files, lambda p: gitutil.show(repo, sha, p), lambda p: gitutil.show(repo, mb, p)),
+                required_tests(
+                    head_files,
+                    lambda p: gitutil.show(repo, sha, p),
+                    lambda p: gitutil.show(repo, sha if post_merge else mb, p),
+                ),
                 collect_results(os.path.join(wt, "bazel-testlogs")),
             )
             report.checks.append(findings_check("evidence", found))
@@ -309,7 +317,7 @@ def run_gate(repo: str, base: str, deep: bool) -> Report:
             report.checks.append(
                 timed("demo", lambda: bazel_check("demo", wt, "run", "//steerrec:demo", "--", "--sweep-only"))
             )
-            if any(is_guardrail(p) for p in changed):
+            if not post_merge and any(is_guardrail(p) for p in changed):
                 report.checks.append(timed("base-guardrails", lambda: base_guardrails_check(repo, wt, mb, sha)))
             if deep:
                 report.checks.append(timed("flakes", lambda: flakes_check(wt, changed)))
@@ -376,6 +384,11 @@ def main(argv: list[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--fast", action="store_true", help="the inner loop: working tree, no git checks")
     mode.add_argument("--deep", action="store_true", help="the gate plus flake re-runs of affected tests")
+    mode.add_argument(
+        "--post-merge",
+        action="store_true",
+        help="after a merge to the base branch: build, tests, evidence, coverage and demo; review-time checks skip",
+    )
     parser.add_argument("--base", help="base ref (default: origin/master, then master)")
     parser.add_argument("--json", action="store_true", help="print the JSON report instead of text")
     parser.add_argument("--repo", help=argparse.SUPPRESS)
@@ -385,7 +398,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.fast:
             report = run_fast(repo)
         else:
-            report = run_gate(repo, args.base or default_base(repo), args.deep)
+            report = run_gate(repo, args.base or default_base(repo), args.deep, args.post_merge)
     except Exception as e:
         sha = gitutil.git(repo, "rev-parse", "HEAD", check=False).strip() or "0" * 40
         report = Report(mode="--fast" if args.fast else "gate", sha=sha, base=args.base or "")

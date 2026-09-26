@@ -11,6 +11,7 @@ tools/verify --fast            # inner loop: the working tree, fast tests, cover
 tools/verify                   # the gate: a clean checkout of HEAD, judged by the base's checks
 tools/verify --deep            # the gate, plus 5 fresh runs of every test the branch affects
 tools/verify --base origin/x   # judge against another base (default: origin/master, then master)
+tools/verify --post-merge      # after a merge: build, tests, evidence, coverage, demo only
 tools/verify --json            # print the JSON report instead of text
 ```
 
@@ -206,9 +207,15 @@ judge), there is no trusted judge, so `verify` **skips** with a notice
 instead of letting the branch judge itself. That PR is reviewed by hand, and
 every later PR is judged by the merged copy.
 
-**`.github/workflows/verify.yml`** runs the same judge on every push to
-`master` (against the previous `master` commit) and on demand (against the
-default branch). It doesn't run on pull requests.
+**`.github/workflows/verify.yml`** runs the same judge, with `--post-merge`, on
+every push to `master`, against the previous `master` commit. `--post-merge`
+skips the review-time checks (`commits`, `docs`, `guardrails`,
+`base-guardrails`), which judged the PR before it merged: a merge commit or a
+merged guardrail change would otherwise turn `master` red forever. It keeps
+build, test, evidence, coverage and demo, and it accepts every skip that's in
+the merged tree. Its job is named `verify-master` and it has no manual trigger,
+so it can never satisfy the required `verify` check that only the gatekeeper
+provides.
 
 Both workflows run the extracted judge **from its own directory**
 (`cd "$judge" && python3 -m tools.verify_lib.verify ...`). `python -m` puts the

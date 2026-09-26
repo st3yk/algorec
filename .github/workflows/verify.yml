@@ -3,23 +3,22 @@ name: verify
 on:
   push:
     branches: [master]
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: verify-${{ github.event.pull_request.number || github.ref }}
+  group: verify-master-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  verify:
+  verify-master:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
@@ -31,17 +30,12 @@ jobs:
       - name: Pick the base
         id: base
         env:
-          EVENT: ${{ github.event_name }}
-          BASE_REF: ${{ github.base_ref }}
           BEFORE: ${{ github.event.before }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          if [ "$EVENT" = "pull_request" ]; then
-            echo "ref=origin/$BASE_REF" >> "$GITHUB_OUTPUT"
-          elif [ "$EVENT" = "push" ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+          if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
             echo "ref=$BEFORE" >> "$GITHUB_OUTPUT"
           else
-            echo "ref=origin/$DEFAULT_BRANCH" >> "$GITHUB_OUTPUT"
+            echo "ref=HEAD~1" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run the base's judge
@@ -59,8 +53,10 @@ jobs:
               if [ -n "$(git ls-tree --name-only "$mb" -- "$p")" ]; then paths="$paths $p"; fi
             done
             git archive "$mb" $paths | tar -x -C "$judge"
+            mode=""
+            if grep -q -- "--post-merge" "$judge/tools/verify_lib/verify.py"; then mode="--post-merge"; fi
             (cd "$judge" && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$judge" python3 -m tools.verify_lib.verify \
-              --repo "$GITHUB_WORKSPACE" --base "$BASE")
+              --repo "$GITHUB_WORKSPACE" --base "$BASE" $mode)
           else
             echo "code=skip" >> "$GITHUB_OUTPUT"
             {
