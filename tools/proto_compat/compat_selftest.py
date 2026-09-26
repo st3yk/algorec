@@ -79,7 +79,9 @@ def test_removing_a_message_is_breaking():
 
 
 def test_removing_an_rpc_or_a_service_is_breaking():
-    assert breaking_changes(BASE, [line for line in BASE if not line.startswith("rpc")]) == ["rpc p.Svc Get was removed"]
+    assert breaking_changes(BASE, [line for line in BASE if not line.startswith("rpc")]) == [
+        "rpc p.Svc Get was removed"
+    ]
     assert "p.Svc was removed" in breaking_changes(BASE, [line for line in BASE if "p.Svc" not in line])
 
 
