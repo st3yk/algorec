@@ -2,6 +2,8 @@ load("@protobuf//bazel:proto_library.bzl", "proto_library")
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(["recommender.fields.golden"])
+
 proto_library(
     name = "recommender_proto",
     srcs = ["steerrec/v1/recommender.proto"],

@@ -28,6 +28,7 @@ filegroup(
         "//tools:all_files",
         "//tools/conventions:all_files",
         "//tools/lint:all_files",
+        "//tools/proto_compat:all_files",
     ],
     visibility = ["//visibility:public"],
 )

@@ -52,3 +52,20 @@ A new Bazel package must add its `all_files` filegroup to `//:repo_files`, and
 its `py_srcs` to `//tools:py_srcs` if it's under `tools/`. Otherwise its files
 aren't checked, and links to them don't resolve.
 
+## Service contract compatibility
+
+`//tools/proto_compat:test` flattens the descriptor set of
+`//proto:recommender_proto` into one line per message, field, enum value and
+reservation. It compares that listing with `proto/recommender.fields.golden`.
+
+| Change | Result |
+|---|---|
+| A field or enum value moved to another number | Fails (breaking). |
+| A field removed without `reserved` for its number | Fails (breaking). |
+| A reserved number or name reused, or a reservation dropped | Fails (breaking). |
+| A field's name, label or type changed | Fails (breaking). |
+| A message or enum removed | Fails (breaking). |
+| A new field, value, message or reservation | Fails until the golden is updated: `bazel run //tools/proto_compat:update_golden`. |
+
+`update_golden` refuses to write when the change is breaking, so the golden can
+only grow. Don't edit the golden by hand.

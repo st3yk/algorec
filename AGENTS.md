@@ -30,6 +30,7 @@ bazel test //...
 bazel run //steerrec:demo -- --sweep-only
 bazel run //:requirements.update   # after editing requirements.in
 bazel run //tools/lint:fix         # apply ruff fixes and formatting
+bazel run //tools/proto_compat:update_golden   # after adding proto fields
 ```
 
 There is no local venv. Always run Python through Bazel: the system Python's
