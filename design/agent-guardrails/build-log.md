@@ -8,10 +8,10 @@ This log is the session's memory. Read it first when resuming. Update "Current s
 
 ## Current state
 
-- **Milestone / round**: M3+M4 committed; review round 1 of M3+M4 (plus round 2 of M1+M2) running; M5 in progress
-- **Last green commit**: `df50b55` (gate: NEEDS_HUMAN, the expected verdict while the base has no judge)
-- **Waiting on**: M3+M4 reviewer subagent
-- **Next action**: M5 (settings, hooks, git hooks, AGENTS workflow section, start_build.sh)
+- **Milestone / round**: M1–M6 committed; M3+M4 round-1 fixes committed; final review round (M3+M4 round 2, M5+M6 round 1, settings.json draft) next
+- **Last green commit**: `f95acfb` (every commit since `d2fcfdd` passes `bazel test //... --config=fast` on its own)
+- **Waiting on**: nothing
+- **Next action**: drill + gate on HEAD, final review, then commit `.claude/settings.json` last (its deny rules block edits to guardrail files), push, open the PR
 - **Blockers**: none
 
 ## Milestones
@@ -24,9 +24,9 @@ This log is the session's memory. Read it first when resuming. Update "Current s
   - Acceptance: 1. `bazel test //... --config=fast` passes in < 20 s with a warm cache. 2. The 300-item optimality test no longer depends on the 2 s default, and the default is checked in a separate `timing` test. 3. `--runs_per_test=10` on the property tests passes.
 - [x] **M4: branch checks and `tools/verify`** (plan steps 6–10)
   - Acceptance: 1. The self-tests for `docs_changed`, `commits` and `guardrails` fail once per rule. 2. `tools/verify --fast` passes on the branch. 3. The gate refuses a dirty tree (ERROR), runs on a clean worktree at the SHA, and loads the checks from the merge-base. 4. A branch that loosens the commit checker still has its bad commit rejected, and gets NEEDS_HUMAN. 5. The report names the SHA and a reproduce command. 6. `pr_body.py` produces a body where every hash exists on the branch.
-- [ ] **M5: agent-side guardrails and orchestration** (plan steps 11–15)
+- [x] **M5: agent-side guardrails and orchestration** (plan steps 11–15)
   - Acceptance: 1. `.claude/settings.json` denies pushing to master, `--no-verify`, `gh pr merge` and edits to guardrail files. 2. The PostToolUse hook rejects an inline comment in < 2 s. 3. The Stop hook blocks on a failing `--fast`. 4. The git hooks reject a non-conventional commit subject. 5. AGENTS.md has an "Agent workflow" section. 6. `start_build.sh --dry-run` prints the steps it would take.
-- [ ] **M6: CI and drill** (plan steps 16, 18–22)
+- [x] **M6: CI and drill** (plan steps 16, 18–22)
   - Acceptance: 1. `.github/workflows/verify.yml` runs `tools/verify` and exits with its code. 2. `tools/verify_drill.sh` passes every row that can run locally. 3. The ruleset is applied by a script you run yourself.
 
 Step 17 (dogfood run) is out of scope for this branch. It needs the merged pipeline and the updated skills.
@@ -52,6 +52,11 @@ Step 17 (dogfood run) is out of scope for this branch. It needs the merged pipel
 | 8 | The gate worktree lives in `~/.cache/steerrec-verify/<repo hash>/wt`, reports in `.verify/reports/` | `bazel-out` is a symlink into Bazel's output tree; a fixed worktree path keeps Bazel's analysis cache warm. | No |
 | 8 | The gate runs the branch's own guardrails, then a second pass with the base's guardrail files overlaid, instead of only the base's | Overlaying alone breaks a legitimate guardrail PR's build and hides whether the branch passes at all; two passes give FAIL vs NEEDS_HUMAN. | No |
 | 9 | `--deep` has flake re-runs only; mutation testing (mutmut) is not implemented | It needs a separate venv outside Bazel and minutes per module; left as a follow-up and stated in the PR. | No |
+| 12 | The Stop and PostToolUse hooks report problems; they never reformat files themselves | An edit made behind the agent's back invalidates its view of the file. | No |
+| 13 | pre-commit checks the working copy of each staged file, not the staged blob | Simpler and fast; the gate checks the commit anyway. | No |
+| 18 | CI doesn't add a `needs-human` label | That needs a write token; a NEEDS_HUMAN run is red with an error annotation, and the job summary lists the reasons. | No |
+| 21 | The build loop's CI wait is not implemented in this repo | It belongs to the build-loop skill update (plan follow-up). | No |
+| 11 | `.claude/settings.json` is committed last | Its deny rules block edits to guardrail files, including by this build session. | No |
 | 10 | pr_body lives in `tools/verify_lib/pr_body.py`, prose comes from `design/<slug>/summary.md` | Keeps facts tool-generated and prose clearly separated. The `.github` PR template comes with M6. | No |
 | 1 | A hand-rolled wrapper around the wheel's binary instead of `aspect_rules_lint` | It needs no new Bazel module, and the spike worked. | No |
 | 1 | `E501`, `E731` and `B905` are ignored | The formatter owns line length. Assigned lambdas are used in the core. `zip(strict=)` would add runtime checks to the assembler, which is a behavior change. | No |

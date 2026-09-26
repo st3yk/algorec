@@ -24,3 +24,28 @@ A record of every milestone's adversarial review rounds, kept so anyone can see 
 Also found while fixing: `ffe9af0`–`ceffb8c` fail `//tools/lint:ruff_format_check` because a file was committed before `lint:fix` reformatted it (fixed in `0ad171f`). Local runs had tested the working copy, not the commit, which is what the M4 gate prevents.
 
 ---
+
+## M3+M4 — test tiers, branch checks, tools/verify (and M1+M2 round-1 fixes) · Round 1
+
+**Reviewed**: `1119666..673495b` · **Verdict**: blocker=1, major=5, minor=6, nit=2 → ITERATE
+
+| Severity | Finding (file:line / commit) | Action (fix commit / declined — why) |
+|---|---|---|
+| blocker | The judge loader (`bootstrap.py`) is branch code, so a branch can run its own judge and report "judge: base" (reproduced as PASS) | Fixed in `ecf316a`: bash-only entry extracts the merge-base judge; the judge verifies its own files against the merge-base; docs state that only the base's entry (`git show origin/master:tools/verify \| bash -s --`) and CI can't be fooled by a branch that replaces both entry and judge; `gate_selftest` reproduces both cases |
+| major | Rename detection hides a renamed test file's weakened asserts | Fixed in `70a6911` (`--no-renames`) |
+| major | `pytestmark`, pytest `-k` in a rule's `env`, tolerance constants, helper-function asserts, `from pytest import mark`, conftest.py all bypass the AST comparison | Fixed in `70a6911` |
+| major | Coverage trusts `deps()`; an `output_group` filegroup hides a file from lint and mypy | Fixed in `00f387f` (`cquery --output=files` on the checks' input groups) |
+| major | `--base HEAD` / `HEAD~1` produce a PASS that pr_body shows | Fixed in `ecf316a` (ERROR when the base leaves nothing to judge) and `667a102` (pr_body: "wrong base") |
+| major | No end-to-end tests of the gate | Fixed in `ecf316a` (`//tools/verify_lib:gate_selftest`, stub bazel on PATH) |
+| minor | Git errors surface as FAIL with a traceback | Fixed in `ecf316a` (ERROR report, exit 3) |
+| minor | Docs describe controls that aren't built | Fixed in `ecf316a`; settings and CI now exist on the branch |
+| minor | pr_body copies non-branch hashes unchecked | Fixed in `667a102` (marked "not a commit here") |
+| minor | 300-item test: 60 s budget in a 60 s-timeout target; asserts mean p, not the optimum | Budget fixed in `a24c430`. Exact optimum declined: the pool is too large to brute-force, and a stored constant would pin today's solver rather than optimality; `hit_time_limit is False` already means HiGHS reported optimal within its gap |
+| minor | `Revert "feat: x"` rejected | Fixed in `0df90e2` |
+| minor | `--flaky_test_attempts=1` doesn't re-run cached passes | Docs fixed in `0982c07`; `--deep` is the flake hunt |
+| nit | `git clean` without `-x` leaves ignored overlay files | Fixed in `ecf316a` |
+| nit | Docs say `tools/verify*` but the pattern is exact | Fixed in `70a6911` (docs list each entry script) |
+
+Also found by the first full drill run (15/16): the loosened-checker row wrongly expected the branch's own commit-msg hook to reject; fixed in `f95acfb`.
+
+---
