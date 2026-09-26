@@ -39,6 +39,25 @@ bazel run //tools/proto_compat:update_golden   # after adding proto fields
 There is no local venv. Always run Python through Bazel: the system Python's
 scipy has no `milp`.
 
+## Agent workflow
+
+Skills (`/algo-design-loop`, `/algo-build-loop`) read this section to find the
+repository's contract. `tools/verify`'s exit code is the only definition of
+"good": never summarize a verdict from memory, paste the report.
+
+- verify-fast: `tools/verify --fast`
+- verify: `tools/verify --base origin/master`
+- verify-deep: `tools/verify --deep --base origin/master`
+- design-dir: `design/<slug>/` (plan.md, build-log.md, review-log.md, summary.md)
+- start-build: `tools/agent/start_build.sh <slug>`
+- pr-body: `tools/pr_body <slug>`
+- setup: `tools/setup.sh` (enables the git hooks)
+
+Verdicts: 0 `PASS`, 1 `FAIL`, 2 `NEEDS_HUMAN`, 3 `ERROR`. A PR may be marked
+ready only on `PASS` at its head commit. `NEEDS_HUMAN` stays a draft with the
+reasons at the top. Agents never merge. `design/` holds plans and logs of work
+in flight; `docs/` describes what is built.
+
 ## Code map
 
 | Path | What |
