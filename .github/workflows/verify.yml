@@ -1,0 +1,90 @@
+name: verify
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Pick the base
+        id: base
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            echo "ref=origin/$BASE_REF" >> "$GITHUB_OUTPUT"
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            echo "ref=$BEFORE" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=HEAD~1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run the base's judge
+        id: verify
+        env:
+          BASE: ${{ steps.base.outputs.ref }}
+        run: |
+          set +e
+          mb="$(git merge-base "$BASE" HEAD)"
+          judge="$RUNNER_TEMP/judge"
+          mkdir -p "$judge"
+          if git cat-file -e "$mb:tools/verify_lib/verify.py" 2>/dev/null; then
+            paths=""
+            for p in tools/__init__.py tools/verify_lib tools/proto_compat/__init__.py tools/proto_compat/listing.py; do
+              if [ -n "$(git ls-tree --name-only "$mb" -- "$p")" ]; then paths="$paths $p"; fi
+            done
+            git archive "$mb" $paths | tar -x -C "$judge"
+            PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$judge" python3 -m tools.verify_lib.verify \
+              --repo "$GITHUB_WORKSPACE" --base "$BASE" --judge "base ${mb:0:12} (extracted by CI)"
+          else
+            tools/verify --base "$BASE"
+          fi
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          sha="$(git rev-parse --short=12 HEAD)"
+          if [ -f ".verify/reports/$sha.md" ]; then cat ".verify/reports/$sha.md" >> "$GITHUB_STEP_SUMMARY"; fi
+          exit 0
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: verify-report
+          path: .verify/reports/
+          if-no-files-found: warn
+
+      - name: Verdict
+        env:
+          CODE: ${{ steps.verify.outputs.code }}
+        run: |
+          case "$CODE" in
+            0) echo "PASS" ;;
+            1) echo "::error::tools/verify: FAIL"; exit 1 ;;
+            2) echo "::error::tools/verify: NEEDS_HUMAN. A human must review the findings in the job summary."; exit 2 ;;
+            *) echo "::error::tools/verify: ERROR (exit $CODE)"; exit 3 ;;
+          esac

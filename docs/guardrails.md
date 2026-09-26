@@ -105,6 +105,27 @@ only the standard library, and ruff checks it with `target-version = py310`.
 Its rules are tested by `//tools/verify_lib:selftest` on scratch git
 repositories.
 
+## On GitHub: the `verify` workflow
+
+`.github/workflows/verify.yml` runs the same judge on every pull request, every
+push to `master`, and on demand. It adds no checks of its own.
+
+1. It checks out the PR's head commit (not GitHub's merge commit) with full
+   history, and restores the Bazel caches with `bazel-contrib/setup-bazel`.
+2. It extracts `tools/verify_lib/` from the merge-base **itself**, in YAML,
+   and runs that copy. A PR that edits `tools/verify` can't change what CI
+   runs; a PR that edits the workflow is a guardrail change (NEEDS_HUMAN),
+   and CODEOWNERS flags it.
+3. The Markdown report goes into the job summary, and the JSON and Markdown
+   reports are uploaded as the `verify-report` artifact.
+4. The check is green only on `PASS`. `FAIL`, `NEEDS_HUMAN` and `ERROR` are
+   red; the error annotation says which.
+
+It has read-only permissions and uses no secrets, so pull requests from forks
+are safe to run. Third-party actions are pinned by commit SHA. A PR runs the
+workflow file from its own branch; that is acceptable while only the owner
+merges. If outside contributors arrive, move to `pull_request_target`.
+
 ## Around the agent: hooks and git hooks
 
 These give fast feedback. None of them decides the verdict; `tools/verify` does.
