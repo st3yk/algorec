@@ -10,6 +10,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 import numpy as np
 from scipy.optimize import Bounds as VarBounds
@@ -52,7 +53,7 @@ class Page:
         return {it.video_id for it in self.items if it.video_id not in u0}
 
 
-Solver = Callable[..., object]
+Solver = Callable[..., Any]
 
 
 def assemble(
@@ -78,7 +79,7 @@ def assemble(
 
     chosen, hit_limit = _solve_ilp(pool, bounds, registry, page_size, delta, deadline, solver)
     used_fallback = chosen is None
-    if used_fallback:
+    if chosen is None:
         chosen = _swap_greedy(pool, u0, bounds, registry, page_size)
 
     ordered = _order(chosen, u0)
@@ -92,7 +93,15 @@ def assemble(
     )
 
 
-def _solve_ilp(pool, bounds, registry, page_size, delta, deadline, solver) -> tuple[list[Item] | None, bool]:
+def _solve_ilp(
+    pool: Sequence[Item],
+    bounds: Sequence[Bound],
+    registry: Registry,
+    page_size: int,
+    delta: float,
+    deadline: float,
+    solver: Solver,
+) -> tuple[list[Item] | None, bool]:
     n, nb = len(pool), len(bounds)
     nvar = n + nb + 1
     i_card = n + nb
@@ -100,9 +109,11 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, deadline, solver) -> tu
     integrality[:n] = 1
     var_bounds = VarBounds(np.zeros(nvar), np.concatenate([np.ones(n), np.full(nb + 1, np.inf)]))
 
-    rows, lo, hi = [], [], []
+    rows: list[np.ndarray] = []
+    lo: list[float] = []
+    hi: list[float] = []
 
-    def add(row, low, high):
+    def add(row: np.ndarray, low: float, high: float) -> None:
         rows.append(row)
         lo.append(low)
         hi.append(high)
@@ -141,7 +152,14 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, deadline, solver) -> tu
 
     limited = False
 
-    def run(objective, extra_rows=(), extra_lo=(), extra_hi=(), ub=None, exact=False):
+    def run(
+        objective: np.ndarray,
+        extra_rows: Sequence[np.ndarray] = (),
+        extra_lo: Sequence[float] = (),
+        extra_hi: Sequence[float] = (),
+        ub: np.ndarray | None = None,
+        exact: bool = False,
+    ) -> np.ndarray | None:
         nonlocal limited
         remaining = deadline - time.perf_counter()
         if remaining <= 0:
@@ -166,7 +184,7 @@ def _solve_ilp(pool, bounds, registry, page_size, delta, deadline, solver) -> tu
             return None
         return np.asarray(res.x)
 
-    def page_of(x):
+    def page_of(x: np.ndarray) -> list[Item]:
         return [it for it, xi in zip(pool, _binary(x[:n])) if xi]
 
     c0 = np.zeros(nvar)
@@ -203,7 +221,9 @@ def _binary(x: np.ndarray) -> np.ndarray:
     return (x > 0.5).astype(float)
 
 
-def _better_page(a, b, bounds, registry, page_size) -> list[Item]:
+def _better_page(
+    a: list[Item], b: list[Item], bounds: Sequence[Bound], registry: Registry, page_size: int
+) -> list[Item]:
     va = _weighted_violation(a, bounds, registry, page_size)
     vb = _weighted_violation(b, bounds, registry, page_size)
     if abs(va - vb) > SLACK_TOL:
@@ -211,29 +231,31 @@ def _better_page(a, b, bounds, registry, page_size) -> list[Item]:
     return a if sum(it.p for it in a) >= sum(it.p for it in b) else b
 
 
-def _weighted_violation(items, bounds, registry, page_size) -> float:
+def _weighted_violation(items: Sequence[Item], bounds: Sequence[Bound], registry: Registry, page_size: int) -> float:
     w_card = 1.0 + sum(registry[b.dim_id].priority for b in bounds)
     return sum(registry[b.dim_id].priority * _gap(b, items) for b in bounds) + w_card * (page_size - len(items))
 
 
-def _gap(b: Bound, items) -> float:
+def _gap(b: Bound, items: Sequence[Item]) -> float:
     total = sum(b.coefficient(it) for it in items)
     if b.kind is BoundKind.LOWER_TOTAL:
         return max(0.0, b.mass - total)
     return max(0.0, total - b.mass)
 
 
-def _swap_greedy(pool, u0, bounds, registry, page_size) -> list[Item]:
+def _swap_greedy(
+    pool: Sequence[Item], u0: Sequence[Item], bounds: Sequence[Bound], registry: Registry, page_size: int
+) -> list[Item]:
     weights = [registry[b.dim_id].priority for b in bounds]
     coef = {it.video_id: [b.coefficient(it) for b in bounds] for it in pool}
     lower = [b.kind is BoundKind.LOWER_TOTAL for b in bounds]
     masses = [b.mass for b in bounds]
     refs = [b.reference * page_size for b in bounds]
 
-    def not_worse_than_neutral(totals):
+    def not_worse_than_neutral(totals: Sequence[float]) -> bool:
         return all((t >= r - SLACK_TOL) if lo else (t <= r + SLACK_TOL) for t, r, lo in zip(totals, refs, lower))
 
-    def violation(totals):
+    def violation(totals: Sequence[float]) -> float:
         return sum(
             w * (max(0.0, m - t) if lo else max(0.0, t - m)) for w, t, m, lo in zip(weights, totals, masses, lower)
         )
@@ -285,7 +307,7 @@ def _order(chosen: Sequence[Item], u0: Sequence[Item]) -> list[Item]:
     return [slots[pos] if pos in slots else next(rest_iter) for pos in range(n)]
 
 
-def _shortfalls(items, bounds, page_size) -> list[Shortfall]:
+def _shortfalls(items: Sequence[Item], bounds: Sequence[Bound], page_size: int) -> list[Shortfall]:
     out = []
     for b in bounds:
         gap = _gap(b, items)

@@ -6,7 +6,7 @@ See docs/code/items-and-registry.md.
 
 import math
 import numbers
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 
 
@@ -43,14 +43,14 @@ class Registry:
     def __contains__(self, dim_id: str) -> bool:
         return dim_id in self._dims
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Dimension]:
         return iter(self._dims.values())
 
     def validate_control(self, control: Mapping[str, float]) -> dict[str, float]:
         unknown = set(control) - set(self._dims)
         if unknown:
             raise ValueError(f"unknown dimension(s) in control: {sorted(unknown)}")
-        out = {}
+        out: dict[str, float] = {}
         for dim_id, s in control.items():
             if isinstance(s, bool) or not isinstance(s, numbers.Real):
                 raise ValueError(f"control[{dim_id}] must be a number, got {s!r}")
