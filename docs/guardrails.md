@@ -23,3 +23,9 @@ Because inline comments aren't allowed, there is no `# noqa`. Exceptions go into
 
 The ruff binary comes from the locked PyPI wheel (`@pypi//ruff:data`), so its
 version is pinned like any other dependency.
+
+## Types
+
+`//tools/lint:mypy` runs mypy over `steerrec/` and `tools/` with `mypy.ini`.
+Every function in `steerrec/` must be fully annotated (`disallow_untyped_defs`).
+Tests aren't type-checked.

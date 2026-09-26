@@ -7,4 +7,7 @@ compile_pip_requirements(
     requirements_txt = "requirements_lock.txt",
 )
 
-exports_files(["ruff.toml"])
+exports_files([
+    "mypy.ini",
+    "ruff.toml",
+])

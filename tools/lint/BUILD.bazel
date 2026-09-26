@@ -56,3 +56,20 @@ py_test(
     main = "lint_test.py",
     deps = [":ruff_lib"],
 )
+
+py_test(
+    name = "mypy",
+    size = "small",
+    srcs = ["mypy_test.py"],
+    args = [
+        "$(rootpaths //steerrec:py_srcs)",
+        "$(rootpaths //tools:py_srcs)",
+    ],
+    data = [
+        "//:mypy.ini",
+        "//steerrec:py_srcs",
+        "//tools:py_srcs",
+    ],
+    main = "mypy_test.py",
+    deps = ["@pypi//mypy"],
+)
