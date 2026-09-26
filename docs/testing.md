@@ -24,8 +24,10 @@ runs in exactly one target:
 | `//tests:test_synthetic_slow` | `slow` | `slow` | the gate |
 
 `--config=fast` is `--test_tag_filters=-slow,-timing`. `--config=verify` never
-retries a failed test (`--flaky_test_attempts=1`), so a flaky test fails the
-gate instead of hiding. When you mark a test `slow`, make sure the file has a
+retries a failed test (`--flaky_test_attempts=1`), so a flaky failure fails
+the gate instead of passing on a retry. A cached pass is not re-run, though:
+to shake out flakes in the tests a branch touches, use `tools/verify --deep`
+(5 uncached runs each). When you mark a test `slow`, make sure the file has a
 `_slow` target, or the test won't run anywhere.
 
 Each file in `tests/` is its own `py_test` target and ends with
