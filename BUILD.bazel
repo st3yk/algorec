@@ -16,6 +16,12 @@ exports_files([
 ])
 
 filegroup(
+    name = "py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
     name = "repo_files",
     srcs = glob(
         ["**"],

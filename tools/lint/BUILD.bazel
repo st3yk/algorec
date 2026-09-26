@@ -30,6 +30,7 @@ py_binary(
 )
 
 LINTED = [
+    "//:py_srcs",
     "//steerrec:py_srcs",
     "//tests:py_srcs",
     "//tools:py_srcs",

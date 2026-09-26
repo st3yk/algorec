@@ -47,7 +47,7 @@ status and time, every finding, and the command that reproduces it.
    package that nobody adds to these lists would otherwise be invisible. The
    check asks Bazel which files the checks' input filegroups actually produce
    (`bazel cquery --output=files` on `//:repo_files` and on the `py_srcs`
-   groups that lint and mypy read), not which files they depend on.
+   groups that lint and mypy read, including the root `//:py_srcs`), not which files they depend on.
 6. **demo**: `bazel run //steerrec:demo -- --sweep-only` exits 0.
 7. **base-guardrails**, only if the branch changes a guardrail file: the
    base's copies of the guardrail files are put back into the checkout and

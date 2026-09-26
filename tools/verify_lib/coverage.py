@@ -10,7 +10,7 @@ MYPY_DIRS = ("steerrec/", "tools/")
 
 INPUTS = {
     "repo": ("//:repo_files",),
-    "lint": ("//steerrec:py_srcs", "//tests:py_srcs", "//tools:py_srcs"),
+    "lint": ("//:py_srcs", "//steerrec:py_srcs", "//tests:py_srcs", "//tools:py_srcs"),
     "mypy": ("//steerrec:py_srcs", "//tools:py_srcs"),
 }
 
