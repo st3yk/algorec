@@ -159,18 +159,25 @@ push to `master`, and on demand. It adds no checks of its own.
 1. It checks out the PR's head commit (not GitHub's merge commit) with full
    history, and restores the Bazel caches with `bazel-contrib/setup-bazel`.
 2. It extracts `tools/verify_lib/` from the merge-base **itself**, in YAML,
-   and runs that copy. A PR that edits `tools/verify` can't change what CI
-   runs; a PR that edits the workflow is a guardrail change (NEEDS_HUMAN),
-   and CODEOWNERS flags it.
+   and runs that copy, so a PR that edits `tools/verify` can't change the
+   judge. The base is the PR's base branch, the previous `master` commit on a
+   push, and the default branch on a manual run.
 3. The Markdown report goes into the job summary, and the JSON and Markdown
    reports are uploaded as the `verify-report` artifact.
 4. The check is green only on `PASS`. `FAIL`, `NEEDS_HUMAN` and `ERROR` are
    red; the error annotation says which.
 
 It has read-only permissions and uses no secrets, so pull requests from forks
-are safe to run. Third-party actions are pinned by commit SHA. A PR runs the
-workflow file from its own branch; that is acceptable while only the owner
-merges. If outside contributors arrive, move to `pull_request_target`.
+are safe to run. Third-party actions are pinned by commit SHA.
+
+**Its limit:** on `pull_request`, GitHub runs the workflow file **from the PR's
+branch**. A PR that edits `verify.yml` can make the `verify` check green
+without running the judge. The judge flags a workflow edit as NEEDS_HUMAN,
+but only if the workflow still runs it. CODEOWNERS only labels such PRs;
+it isn't enforced, because the ruleset requires no reviews. So until the
+workflow moves to `pull_request_target` (the base's YAML, checking out the
+head SHA read-only), **a green check on a PR that touches `.github/` is not
+evidence**: read the diff. That's acceptable while only the owner merges.
 
 ### Protecting `master`
 

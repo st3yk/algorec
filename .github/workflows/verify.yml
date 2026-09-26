@@ -36,13 +36,14 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
           BEFORE: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           if [ "$EVENT" = "pull_request" ]; then
             echo "ref=origin/$BASE_REF" >> "$GITHUB_OUTPUT"
-          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+          elif [ "$EVENT" = "push" ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
             echo "ref=$BEFORE" >> "$GITHUB_OUTPUT"
           else
-            echo "ref=HEAD~1" >> "$GITHUB_OUTPUT"
+            echo "ref=origin/$DEFAULT_BRANCH" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run the base's judge
@@ -67,7 +68,8 @@ jobs:
           fi
           code=$?
           echo "code=$code" >> "$GITHUB_OUTPUT"
-          sha="$(git rev-parse --short=12 HEAD)"
+          sha="$(git rev-parse HEAD)"
+          sha="${sha:0:12}"
           if [ -f ".verify/reports/$sha.md" ]; then cat ".verify/reports/$sha.md" >> "$GITHUB_STEP_SUMMARY"; fi
           exit 0
 
