@@ -96,7 +96,7 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - name: Keep the PR a draft unless it's ready
+      - name: Label the PR by its verdict
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -105,23 +105,25 @@ jobs:
           KIND: ${{ needs.verify.outputs.kind }}
           RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          set -euo pipefail
+          gh label create needs-human --repo "$REPO" --force --color FBCA04 --description "tools/verify: soft NEEDS_HUMAN"
+          gh label create not-ready --repo "$REPO" --force --color B60205 --description "tools/verify: not ready to merge"
           case "$CODE" in
             0)
-              gh pr edit "$PR" --repo "$REPO" --remove-label needs-human >/dev/null 2>&1 || true
+              gh pr edit "$PR" --repo "$REPO" --remove-label needs-human --remove-label not-ready
               ;;
             skip)
               ;;
             2)
               if [ "$KIND" = soft ]; then
-                gh label create needs-human --repo "$REPO" --color FBCA04 --description "tools/verify: soft NEEDS_HUMAN" >/dev/null 2>&1 || true
-                gh pr edit "$PR" --repo "$REPO" --add-label needs-human
+                gh pr edit "$PR" --repo "$REPO" --add-label needs-human --remove-label not-ready
               else
-                gh pr ready "$PR" --repo "$REPO" --undo >/dev/null 2>&1 || true
-                gh pr comment "$PR" --repo "$REPO" --body "tools/verify says NEEDS_HUMAN (${KIND:-hard}): the judge can't vouch for this change, so the PR is back to draft. See $RUN."
+                gh pr edit "$PR" --repo "$REPO" --add-label not-ready --remove-label needs-human
+                gh pr comment "$PR" --repo "$REPO" --body "Not ready: tools/verify says NEEDS_HUMAN (${KIND:-hard}), so the judge can't vouch for this change. The required \`verify\` check blocks merging; only an admin bypass can merge it. See $RUN."
               fi
               ;;
             *)
-              gh pr ready "$PR" --repo "$REPO" --undo >/dev/null 2>&1 || true
-              gh pr comment "$PR" --repo "$REPO" --body "tools/verify didn't pass (exit ${CODE:-none}), so the PR is back to draft until it does. See $RUN."
+              gh pr edit "$PR" --repo "$REPO" --add-label not-ready --remove-label needs-human
+              gh pr comment "$PR" --repo "$REPO" --body "Not ready: tools/verify didn't pass (exit ${CODE:-none}). The required \`verify\` check blocks merging until it does. See $RUN."
               ;;
           esac

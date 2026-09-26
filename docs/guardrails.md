@@ -193,14 +193,20 @@ jobs, so that PR code never runs next to a write token:
    `ERROR`.
 2. **`enforce`** (`pull-requests: write`, `issues: write`) never checks out or
    runs the PR's code. It reads the verdict and kind from job 1 and:
-   - `PASS`: removes the `needs-human` label;
+   - `PASS`: removes the `needs-human` and `not-ready` labels;
    - soft `NEEDS_HUMAN`: adds the `needs-human` label, and the PR stays ready
      for a human to review;
-   - hard `NEEDS_HUMAN`, `FAIL`, `ERROR`, or no verdict: turns the PR back
-     into a draft and comments with a link to the run.
+   - hard `NEEDS_HUMAN`, `FAIL`, `ERROR`, or no verdict: adds the `not-ready`
+     label and comments with a link to the run.
 
-So a PR on GitHub is only ever "ready" when the judge says so, however it was
-opened.
+   Any failing API call fails the job, so the labels never claim more than
+   happened. It labels instead of turning the PR back into a draft, because
+   GitHub doesn't let the Actions job token run `convertPullRequestToDraft`
+   ("Resource not accessible by integration"). What blocks merging is the
+   required `verify` check, which stays red until the judge says `PASS`.
+
+So an unready PR on GitHub is always marked `not-ready`, however it was
+opened, and can't merge without an admin bypass.
 
 When the merge-base has no `tools/verify_lib/` (the PR that introduces the
 judge), there is no trusted judge, so `verify` **skips** with a notice

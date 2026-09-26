@@ -95,7 +95,14 @@ def test_the_writing_job_never_touches_the_prs_code():
     assert "pull-requests: write" in enforce
     for forbidden in ("actions/checkout", "bazel ", "verify_lib", "python3", "git ", "bash ", "./"):
         assert forbidden not in enforce, forbidden
-    assert "gh pr ready" in enforce and "--undo" in enforce and "--add-label needs-human" in enforce
+    assert "--add-label not-ready" in enforce and "--add-label needs-human" in enforce
+
+
+def test_the_writing_job_fails_loudly_and_never_claims_a_draft():
+    enforce = job(read(GATEKEEPER), "enforce")
+    assert "set -euo pipefail" in enforce
+    assert "|| true" not in enforce and ">/dev/null" not in enforce
+    assert "--undo" not in enforce and "draft" not in enforce.lower()
 
 
 def test_every_gatekeeper_action_is_pinned_to_a_commit():
