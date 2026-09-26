@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repo="$(git rev-parse --show-toplevel)"
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$repo${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m tools.verify_lib.bootstrap "$@"

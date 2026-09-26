@@ -25,6 +25,8 @@ relevant. Today only the steering core is built, and it runs on synthetic items.
 ## Commands
 
 ```sh
+tools/verify --fast                # before every commit: fast tests and coverage
+tools/verify                       # before every push: the gate (PASS/FAIL/NEEDS_HUMAN/ERROR)
 bazel build //...
 bazel test //...
 bazel run //steerrec:demo -- --sweep-only

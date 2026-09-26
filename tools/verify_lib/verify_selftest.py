@@ -8,12 +8,14 @@ from collections.abc import Mapping
 import pytest
 
 from tools.verify_lib import gitutil
+from tools.verify_lib.bootstrap import base_arg, extract_judge
 from tools.verify_lib.commits import check_commits
 from tools.verify_lib.coverage import check_coverage, label_to_path
 from tools.verify_lib.docs_changed import check_docs, docs_for, load_map
 from tools.verify_lib.findings import FAIL, HUMAN, Finding
 from tools.verify_lib.gitutil import Commit
 from tools.verify_lib.guardrails import check_guardrails, is_guardrail
+from tools.verify_lib.report import CheckResult, Report, render_markdown, verdict_of
 
 ENV = {
     "GIT_AUTHOR_NAME": "t",
@@ -317,6 +319,63 @@ def test_labels_map_to_repo_paths():
     assert label_to_path("//:README.md") == "README.md"
     assert label_to_path("//steerrec:assembler.py") == "steerrec/assembler.py"
     assert label_to_path("@pypi//numpy:x.py") is None
+
+
+@pytest.mark.parametrize(
+    "statuses, levels, verdict",
+    [
+        (["pass"], [], "PASS"),
+        (["pass", "skip"], [], "PASS"),
+        (["pass"], [HUMAN], "NEEDS_HUMAN"),
+        (["needs_human"], [], "NEEDS_HUMAN"),
+        (["pass", "fail"], [HUMAN], "FAIL"),
+        (["pass"], [FAIL, HUMAN], "FAIL"),
+        (["fail", "error"], [], "ERROR"),
+        ([], [], "ERROR"),
+    ],
+)
+def test_verdicts(statuses, levels, verdict):
+    checks = [CheckResult(f"c{i}", s) for i, s in enumerate(statuses)]
+    findings = [Finding("x", level, "m") for level in levels]
+    assert verdict_of(checks, findings) == verdict
+
+
+def test_the_report_names_the_sha_and_how_to_reproduce():
+    report = Report(
+        mode="gate", sha="a" * 40, base="master", merge_base="b" * 40, reproduce="tools/verify --base master"
+    )
+    report.checks = [CheckResult("test", "fail", 1.0, "bazel exit 3", "FAIL: //t:x")]
+    text = render_markdown(report)
+    assert "FAIL" in text and "aaaaaaaaaaaa" in text and "Reproduce: `tools/verify --base master`" in text
+    assert report.exit_code == 1
+    assert '"verdict": "FAIL"' in report.to_json()
+
+
+def test_base_arg_parsing():
+    assert base_arg(["--base", "origin/x"]) == "origin/x"
+    assert base_arg(["--deep", "--base=main"]) == "main"
+    assert base_arg(["--deep"]) is None
+
+
+def test_the_judge_is_extracted_from_the_given_ref(repo, tmp_path_factory):
+    repo.commit(
+        "chore: judge",
+        {
+            "tools/__init__.py": "",
+            "tools/verify_lib/__init__.py": "",
+            "tools/verify_lib/verify.py": "BASE = True\n",
+        },
+    )
+    base = repo.run("rev-parse", "HEAD").strip()
+    repo.commit("chore: tamper", {"tools/verify_lib/verify.py": "BASE = False\n"})
+    dest = str(tmp_path_factory.mktemp("judge"))
+    assert extract_judge(repo.path, base, dest)
+    with open(os.path.join(dest, "tools/verify_lib/verify.py")) as f:
+        assert f.read() == "BASE = True\n"
+
+
+def test_no_judge_is_extracted_from_a_ref_without_one(repo, tmp_path_factory):
+    assert not extract_judge(repo.path, "HEAD", str(tmp_path_factory.mktemp("judge")))
 
 
 if __name__ == "__main__":

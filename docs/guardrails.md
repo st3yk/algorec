@@ -1,14 +1,73 @@
 # Guardrails: how a change is judged
 
-Every check that decides whether a change is good lives in this repository and
-runs through Bazel. Agents and humans run the same commands and get the same
-answer.
+Every check that decides whether a change is good lives in this repository.
+`tools/verify` runs all of them and returns one verdict. Agents, git hooks, CI
+and humans run the same command and get the same answer.
 
-## Branch checks
+## The judge: `tools/verify`
 
-These checks look at the commits between the merge-base and HEAD. They live in
-`tools/verify_lib/`.
+```sh
+tools/verify --fast            # inner loop: the working tree, fast tests, coverage
+tools/verify                   # the gate: a clean checkout of HEAD, judged by the base's checks
+tools/verify --deep            # the gate, plus 5 fresh runs of every test the branch affects
+tools/verify --base origin/x   # judge against another base (default: origin/master, then master)
+tools/verify --json            # print the JSON report instead of text
+```
 
+The exit code is the verdict:
+
+| Exit | Verdict | Meaning |
+|---|---|---|
+| 0 | `PASS` | Every check passed at this commit, and nothing needs a human. |
+| 1 | `FAIL` | At least one check failed. |
+| 2 | `NEEDS_HUMAN` | Every check passed, but the branch changes a guardrail, weakens a test, uses a `Docs-Unchanged:` escape, or was judged by its own checks. Only a human can accept it. |
+| 3 | `ERROR` | The judge couldn't run: uncommitted changes, an unknown base, or Bazel crashed. Never read it as PASS. |
+
+Each run writes `.verify/reports/<sha>.json` and `.md` (ignored by git). The
+report names the commit, the base, the merge-base, the judge, each check's
+status and time, every finding, and the command that reproduces it.
+
+### What the gate runs
+
+1. **clean-tree**: tracked files must be committed. The verdict is about a
+   commit, not a working tree (untracked files are fine; they aren't in the
+   checkout).
+2. **commits**, **docs**, **guardrails**: git-level checks over
+   `merge-base..HEAD` (below).
+3. **build** and **test**: `bazel build //...` and
+   `bazel test //... --config=verify` (every tier, no retries), in a clean
+   checkout of HEAD.
+4. **coverage**: every tracked file must be in `//:repo_files`, every tracked
+   `.py` file must be linted, and every `.py` file in `steerrec/` and `tools/`
+   must be type-checked. A Bazel glob stops at package boundaries, so a new
+   package that nobody adds to these lists would otherwise be invisible.
+5. **demo**: `bazel run //steerrec:demo -- --sweep-only` exits 0.
+6. **base-guardrails**, only if the branch changes a guardrail file: the
+   base's copies of the guardrail files are put back into the checkout and
+   the tests run again. If they fail only there, the verdict is NEEDS_HUMAN:
+   the branch passes only by its own rules.
+7. **flakes**, with `--deep`: every test target that depends on a changed
+   file runs 5 more times, uncached.
+
+The clean checkout is a git worktree in
+`~/.cache/steerrec-verify/<repo hash>/wt` (or `$STEERREC_VERIFY_DIR`). Its path
+is fixed, so Bazel's analysis cache stays warm between runs, and a lock file
+serializes gates on the same repository.
+
+### Who judges
+
+`tools/verify` extracts `tools/verify_lib/` (and the stdlib-only contract
+listing it uses) from the **merge-base** and runs that copy. A branch can't
+loosen the commit, docs or guardrail rules that judge it. When the base has
+no `tools/verify` yet, the branch judges itself, and the verdict is at best
+NEEDS_HUMAN. `--fast` always uses the working tree's own copy.
+
+The entry script itself is the branch's copy, so a branch that edits it could
+skip this step. That edit is a guardrail change (NEEDS_HUMAN), agents can't
+make it (see `.claude/settings.json`), and CI extracts the base's judge on its
+own.
+
+### Branch checks
 
 | Check | FAIL | NEEDS_HUMAN |
 |---|---|---|

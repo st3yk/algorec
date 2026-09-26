@@ -12,7 +12,7 @@ These pages describe **what is built**. For where the project is heading, see
 | [code/synthetic-and-demo.md](code/synthetic-and-demo.md) | The synthetic catalog and the demo CLI. |
 | [service-contract.md](service-contract.md) | The gRPC contract in `proto/`, field by field, and what backs it today. |
 | [testing.md](testing.md) | What each test file establishes, and test conventions. |
-| [guardrails.md](guardrails.md) | The checks that judge a change: lint, types, conventions, and how to run them. |
+| [guardrails.md](guardrails.md) | `tools/verify` and every check that judges a change: lint, types, conventions, contract, branch checks. |
 | [decisions.md](decisions.md) | Non-obvious choices, findings from building, rejected alternatives. |
 
 ## Architecture of the built part
