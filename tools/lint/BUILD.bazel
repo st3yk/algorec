@@ -73,3 +73,9 @@ py_test(
     main = "mypy_test.py",
     deps = ["@pypi//mypy"],
 )
+
+filegroup(
+    name = "all_files",
+    srcs = glob(["**"]),
+    visibility = ["//:__pkg__"],
+)

@@ -11,3 +11,23 @@ exports_files([
     "mypy.ini",
     "ruff.toml",
 ])
+
+filegroup(
+    name = "repo_files",
+    srcs = glob(
+        ["**"],
+        exclude = [
+            ".git/**",
+            ".claude/**",
+            "bazel-*/**",
+        ],
+    ) + [
+        "//proto:all_files",
+        "//steerrec:all_files",
+        "//tests:all_files",
+        "//tools:all_files",
+        "//tools/conventions:all_files",
+        "//tools/lint:all_files",
+    ],
+    visibility = ["//visibility:public"],
+)

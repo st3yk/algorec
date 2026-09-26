@@ -29,3 +29,26 @@ version is pinned like any other dependency.
 `//tools/lint:mypy` runs mypy over `steerrec/` and `tools/` with `mypy.ini`.
 Every function in `steerrec/` must be fully annotated (`disallow_untyped_defs`).
 Tests aren't type-checked.
+
+## Conventions
+
+`//tools/conventions:test` checks the AGENTS.md rules that a machine can check,
+over every file in the repository (`//:repo_files`):
+
+| Rule | What fails |
+|---|---|
+| `no-comments` | A `#` comment in `steerrec/`, `tests/` or `tools/` Python files. A shebang on line 1 is allowed. |
+| `no-docstrings` | A function or class docstring. |
+| `module-docstring` | A file in `steerrec/` or `tools/` with no module docstring, or one that names no `docs/` page. Test files and empty `__init__.py` files are exempt, since `docs/testing.md` documents the tests. |
+| `doc-ref-exists` | A module docstring names a `docs/…` page (or `NORTH_STAR.md`, `BUILDING.md`, `AGENTS.md`) that doesn't exist. |
+| `py-test-rule` | A `tests/test_*.py` file with no `py_test` rule in `tests/BUILD.bazel`. |
+| `pytest-footer` | A test file that doesn't end with the pytest footer. |
+| `md-link` | A relative Markdown link to a missing file, or to a `#anchor` that no heading produces. Anchors follow GitHub's slug rules. Links inside code spans and fences are ignored. |
+
+Every failure prints the file, the line, and the rule it breaks. The rules are
+tested by `//tools/conventions:selftest`, with one violating fixture per rule.
+
+A new Bazel package must add its `all_files` filegroup to `//:repo_files`, and
+its `py_srcs` to `//tools:py_srcs` if it's under `tools/`. Otherwise its files
+aren't checked, and links to them don't resolve.
+
