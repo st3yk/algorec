@@ -134,6 +134,8 @@ def test_the_docs_map_covers_every_steerrec_module():
         assert docs_for(f"steerrec/{module}.py", mapping), module
     assert docs_for("proto/steerrec/v1/recommender.proto", mapping) == ["docs/service-contract.md"]
     assert docs_for("tools/verify_lib/verify.py", mapping) == ["docs/guardrails.md"]
+    assert docs_for("tools/verify", mapping) == ["docs/guardrails.md"]
+    assert docs_for("tools/lint/BUILD.bazel", mapping) == []
     assert docs_for("docs/README.md", mapping) == []
 
 

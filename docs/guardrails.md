@@ -72,7 +72,7 @@ own.
 | Check | FAIL | NEEDS_HUMAN |
 |---|---|---|
 | `commits` | A subject that isn't `type(scope): summary` (types: feat, fix, test, refactor, build, chore, docs, perf, style, ci, revert), starts with a capital, or is over 72 characters; a WIP or `fixup!` commit; a merge commit; a lock-file change mixed with other files. | |
-| `docs` | A `feat`, `fix`, `perf` or `revert` commit that changes a source in `tools/verify_lib/docs_map.json` without changing its docs page in the same commit. | The same, with a `Docs-Unchanged: <reason>` trailer. The reason goes into the report. |
+| `docs` | A `feat`, `fix`, `perf` or `revert` commit that changes a source in `tools/verify_lib/docs_map.json` (Python modules, the proto, `tools/verify`, `.claude/` and `.github/`; not BUILD files) without changing its docs page in the same commit. | The same, with a `Docs-Unchanged: <reason>` trailer. The reason goes into the report. |
 | `guardrails` | The contract golden breaks against the base's golden, or was deleted. | A guardrail file changed (`tools/verify*`, `tools/verify_lib/`, `tools/conventions/`, `tools/lint/`, `tools/proto_compat/`, `tools/hooks/`, `tools/githooks/`, `tools/agent/`, `ruff.toml`, `mypy.ini`, `pytest.ini`, `.bazelrc`, `.claude/settings.json`, `.github/`, `CODEOWNERS`). A test function removed or renamed; an `assert`, `pytest.raises` or `pytest.approx` removed or changed; a decorator such as `parametrize` removed or changed; a skip or xfail added; a `py_test` rule removed or tagged `manual`; a line removed from the golden. |
 
 Test functions are compared by name across all test files, and asserts by

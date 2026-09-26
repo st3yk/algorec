@@ -8,7 +8,8 @@
   "steerrec/demo.py": ["docs/code/synthetic-and-demo.md"],
   "proto/**": ["docs/service-contract.md"],
   "tests/**.py": ["docs/testing.md"],
-  "tools/**": ["docs/guardrails.md"],
+  "tools/verify": ["docs/guardrails.md"],
+  "tools/**.py": ["docs/guardrails.md"],
   ".claude/**": ["docs/guardrails.md"],
   ".github/**": ["docs/guardrails.md"]
 }
