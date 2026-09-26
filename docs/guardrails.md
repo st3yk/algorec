@@ -125,6 +125,25 @@ Enable the git hooks once per clone with `tools/setup.sh`
 The hook scripts run under the system Python (3.10 or newer), use only the
 standard library, and are tested by `//tools/hooks:selftest`.
 
+## Starting a build: `tools/agent/start_build.sh`
+
+```sh
+tools/agent/start_build.sh <slug> [--gate] [--dry-run] [--base origin/master]
+```
+
+It takes a finished plan in `design/<slug>/plan.md` and:
+
+1. creates the worktree `.claude/worktrees/<slug>` on a new branch
+   `feat/<slug>` from `origin/master`;
+2. commits the design folder (`docs(design): add the <slug> plan`), pushes,
+   and opens a **draft** PR whose body comes from `tools/pr_body`;
+3. unless `--gate`, starts `claude -p "/algo-build-loop design/<slug>/plan.md
+   --autonomous" --permission-mode acceptEdits` in the background, logging to
+   `~/.cache/steerrec-agent/<slug>.log`.
+
+`--dry-run` prints every command instead of running it. The script refuses an
+existing branch or worktree.
+
 ## Lint and format
 
 | Target | What it checks |
