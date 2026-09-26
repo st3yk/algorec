@@ -97,12 +97,17 @@ def test_good_commits_pass(repo):
         ("feat: " + "x" * 70, "limit is 72"),
         ("WIP: half done", "work-in-progress"),
         ("fixup! feat: add a", "work-in-progress"),
+        ('Revert "feat: add a" and more', "Conventional Commit"),
     ],
 )
 def test_bad_subjects_fail(repo, subject, fragment):
     findings = check_commits(on_branch(repo, (subject, {"a.py": "1\n"})))
     assert findings and all(f.level == FAIL for f in findings)
     assert any(fragment in f.message for f in findings)
+
+
+def test_gits_default_revert_subject_passes(repo):
+    assert check_commits(on_branch(repo, ('Revert "feat(a): add a"', {"a.py": "1\n"}))) == []
 
 
 def test_an_acronym_at_the_start_is_not_a_capital_letter(repo):

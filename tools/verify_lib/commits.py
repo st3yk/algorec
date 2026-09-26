@@ -10,6 +10,7 @@ TYPES = ("feat", "fix", "test", "refactor", "build", "chore", "docs", "perf", "s
 SUBJECT = re.compile(r"^(?P<type>[a-z]+)(?:\((?P<scope>[a-z0-9][a-z0-9_-]*)\))?(?P<bang>!)?: (?P<summary>\S.*)$")
 MAX_SUBJECT = 72
 FORBIDDEN_PREFIXES = ("wip", "fixup!", "squash!", "amend!")
+GIT_REVERT = re.compile(r'^Revert "[a-z]+(\([a-z0-9][a-z0-9_-]*\))?!?: \S.*"$')
 LOCK_ONLY = {"requirements.in", "requirements_lock.txt", "MODULE.bazel", "MODULE.bazel.lock"}
 LOCK_FILES = {"requirements_lock.txt", "MODULE.bazel.lock"}
 
@@ -34,7 +35,9 @@ def check_commits(commits: list[Commit]) -> list[Finding]:
             )
             continue
         m = SUBJECT.match(c.subject)
-        if not m or m.group("type") not in TYPES:
+        if GIT_REVERT.match(c.subject):
+            pass
+        elif not m or m.group("type") not in TYPES:
             out.append(
                 Finding(
                     "commits",
