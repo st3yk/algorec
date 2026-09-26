@@ -6,7 +6,8 @@ import sys
 from google.protobuf import descriptor_pb2
 from python.runfiles import runfiles
 
-from tools.proto_compat.compat import breaking_changes, describe, read_listing
+from tools.proto_compat.compat import describe
+from tools.proto_compat.listing import breaking_changes, read_listing
 
 GOLDEN = "proto/recommender.fields.golden"
 

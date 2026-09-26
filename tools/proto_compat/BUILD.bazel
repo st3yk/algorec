@@ -5,9 +5,17 @@ load("@rules_python//python:py_test.bzl", "py_test")
 package(default_visibility = ["//visibility:public"])
 
 py_library(
+    name = "listing",
+    srcs = ["listing.py"],
+)
+
+py_library(
     name = "compat",
     srcs = ["compat.py"],
-    deps = ["@pypi//protobuf"],
+    deps = [
+        ":listing",
+        "@pypi//protobuf",
+    ],
 )
 
 py_test(
