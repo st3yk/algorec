@@ -40,7 +40,11 @@ status and time, every finding, and the command that reproduces it.
 4. **coverage**: every tracked file must be in `//:repo_files`, every tracked
    `.py` file must be linted, and every `.py` file in `steerrec/` and `tools/`
    must be type-checked. A Bazel glob stops at package boundaries, so a new
-   package that nobody adds to these lists would otherwise be invisible.
+   package that nobody adds to these lists would otherwise be invisible. The
+   check asks Bazel which files the checks' input filegroups actually produce
+   (`bazel cquery --output=files` on `//:repo_files` and on the `py_srcs`
+   groups that lint and mypy read), not which files they depend on.
+
 5. **demo**: `bazel run //steerrec:demo -- --sweep-only` exits 0.
 6. **base-guardrails**, only if the branch changes a guardrail file: the
    base's copies of the guardrail files are put back into the checkout and

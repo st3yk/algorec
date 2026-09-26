@@ -11,7 +11,7 @@ import pytest
 from tools.verify_lib import gitutil
 from tools.verify_lib.bootstrap import base_arg, extract_judge
 from tools.verify_lib.commits import check_commits
-from tools.verify_lib.coverage import check_coverage, label_to_path
+from tools.verify_lib.coverage import check_coverage, source_paths
 from tools.verify_lib.docs_changed import check_docs, docs_for, load_map
 from tools.verify_lib.findings import FAIL, HUMAN, Finding
 from tools.verify_lib.gitutil import Commit
@@ -325,10 +325,9 @@ def test_coverage_flags_files_no_check_sees():
     ]
 
 
-def test_labels_map_to_repo_paths():
-    assert label_to_path("//:README.md") == "README.md"
-    assert label_to_path("//steerrec:assembler.py") == "steerrec/assembler.py"
-    assert label_to_path("@pypi//numpy:x.py") is None
+def test_cquery_output_maps_to_source_paths():
+    out = "README.md\nsteerrec/a.py\nbazel-out/k8-fastbuild/bin/x.py\nexternal/pypi/y.py\n"
+    assert source_paths(out) == {"README.md", "steerrec/a.py"}
 
 
 @pytest.mark.parametrize(

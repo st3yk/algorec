@@ -8,18 +8,20 @@ from tools.verify_lib.findings import FAIL, Finding
 REPO_FILES_EXEMPT = (".claude/*", ".github/*", ".gitignore", ".bazelignore", ".bazelversion", ".bazelrc")
 MYPY_DIRS = ("steerrec/", "tools/")
 
-TARGETS = {
-    "repo": "//:repo_files",
-    "lint": "//tools/lint:ruff_check",
-    "mypy": "//tools/lint:mypy",
+INPUTS = {
+    "repo": ("//:repo_files",),
+    "lint": ("//steerrec:py_srcs", "//tests:py_srcs", "//tools:py_srcs"),
+    "mypy": ("//steerrec:py_srcs", "//tools:py_srcs"),
 }
 
 
-def label_to_path(label: str) -> str | None:
-    if not label.startswith("//"):
-        return None
-    package, _, name = label[2:].partition(":")
-    return f"{package}/{name}" if package else name
+def source_paths(cquery_files: str) -> set[str]:
+    out = set()
+    for line in cquery_files.splitlines():
+        line = line.strip()
+        if line and not line.startswith(("bazel-out/", "external/", "/")):
+            out.add(line)
+    return out
 
 
 def check_coverage(tracked: list[str], seen: dict[str, set[str]]) -> list[Finding]:
@@ -54,5 +56,5 @@ def check_coverage(tracked: list[str], seen: dict[str, set[str]]) -> list[Findin
     return out
 
 
-def query_expression(target: str) -> str:
-    return f'kind("source file", deps({target}))'
+def query_expression(targets: tuple[str, ...]) -> str:
+    return f"set({' '.join(targets)})"

@@ -15,7 +15,7 @@ from collections.abc import Callable, Iterator
 
 from tools.verify_lib import gitutil
 from tools.verify_lib.commits import check_commits
-from tools.verify_lib.coverage import TARGETS, check_coverage, label_to_path, query_expression
+from tools.verify_lib.coverage import INPUTS, check_coverage, query_expression, source_paths
 from tools.verify_lib.docs_changed import check_docs, load_map
 from tools.verify_lib.findings import FAIL, HUMAN, Finding
 from tools.verify_lib.guardrails import check_guardrails, is_guardrail
@@ -50,6 +50,14 @@ def bazel(cwd: str, *args: str, timeout: float = 3600) -> tuple[int, str]:
         stderr = e.stderr.decode(errors="replace") if isinstance(e.stderr, bytes) else e.stderr or ""
         return 124, f"bazel {' '.join(args)} timed out after {timeout:.0f}s\n{stderr}"
     return result.returncode, result.stdout + result.stderr
+
+
+def bazel_stdout(cwd: str, *args: str) -> tuple[int, str]:
+    try:
+        result = subprocess.run(["bazel", *args], cwd=cwd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    except FileNotFoundError:
+        return 127, "bazel is not on PATH"
+    return result.returncode, result.stdout if result.returncode == 0 else result.stdout + result.stderr
 
 
 def tail(text: str, n: int = LOG_TAIL) -> str:
@@ -101,11 +109,11 @@ def coverage_check(cwd: str, tracked: list[str]) -> tuple[CheckResult, list[Find
 
 def _coverage(cwd: str, tracked: list[str]) -> tuple[CheckResult, list[Finding]]:
     seen: dict[str, set[str]] = {}
-    for key, target in TARGETS.items():
-        code, out = bazel(cwd, "query", "--output=label", query_expression(target))
+    for key, targets in INPUTS.items():
+        code, out = bazel_stdout(cwd, "cquery", "--output=files", query_expression(targets))
         if code != 0:
-            return CheckResult("coverage", ERROR_STATUS, summary=f"bazel query {target} failed", log=tail(out)), []
-        seen[key] = {p for p in (label_to_path(line.strip()) for line in out.splitlines()) if p}
+            return CheckResult("coverage", ERROR_STATUS, summary=f"bazel cquery {key} inputs failed", log=tail(out)), []
+        seen[key] = source_paths(out)
     findings = check_coverage(tracked, seen)
     status = FAIL_STATUS if findings else PASS_STATUS
     return CheckResult("coverage", status, summary=f"{len(tracked)} tracked files, {len(findings)} uncovered"), findings
