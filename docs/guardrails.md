@@ -210,6 +210,11 @@ every later PR is judged by the merged copy.
 `master` (against the previous `master` commit) and on demand (against the
 default branch). It doesn't run on pull requests.
 
+Both workflows run the extracted judge **from its own directory**
+(`cd "$judge" && python3 -m tools.verify_lib.verify ...`). `python -m` puts the
+current directory ahead of `PYTHONPATH`, so running it from the checkout would
+import the checkout's `tools/verify_lib/` instead: the PR would judge itself.
+
 Both use read-only access to the code, no secrets, and third-party actions
 pinned by commit SHA.
 

@@ -53,8 +53,8 @@ jobs:
             if [ -n "$(git ls-tree --name-only "$mb" -- "$p")" ]; then paths="$paths $p"; fi
           done
           git archive "$mb" $paths | tar -x -C "$judge"
-          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$judge" python3 -m tools.verify_lib.verify \
-            --repo "$GITHUB_WORKSPACE" --base "$BASE"
+          (cd "$judge" && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$judge" python3 -m tools.verify_lib.verify \
+            --repo "$GITHUB_WORKSPACE" --base "$BASE")
           code=$?
           echo "code=$code" >> "$GITHUB_OUTPUT"
           sha="$(git rev-parse HEAD)"

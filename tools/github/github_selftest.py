@@ -96,5 +96,12 @@ def test_every_gatekeeper_action_is_pinned_to_a_commit():
     assert uses and all(re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", u) for u in uses), uses
 
 
+@pytest.mark.parametrize("workflow", [WORKFLOW, GATEKEEPER])
+def test_the_extracted_judge_runs_from_its_own_directory(workflow):
+    text = read(workflow)
+    runs = re.findall(r"^( *)(.*python3 -m tools\.verify_lib\.verify.*)$", text, re.M)
+    assert runs and all('(cd "$judge" && ' in line for _, line in runs), runs
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
