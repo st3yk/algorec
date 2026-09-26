@@ -41,12 +41,21 @@ class Report:
         return verdict_of(self.checks, self.findings)
 
     @property
+    def human_kind(self) -> str:
+        if self.verdict != "NEEDS_HUMAN":
+            return ""
+        if any(c.status == HUMAN_STATUS for c in self.checks) or any(f.hard for f in self.findings if f.level == HUMAN):
+            return "hard"
+        return "soft"
+
+    @property
     def exit_code(self) -> int:
         return VERDICTS[self.verdict]
 
     def to_dict(self) -> dict[str, object]:
         data = asdict(self)
         data["verdict"] = self.verdict
+        data["human_kind"] = self.human_kind
         data["findings"] = [f.to_dict() for f in self.findings]
         return data
 
@@ -77,7 +86,8 @@ def render_text(report: Report) -> str:
     for c in report.checks:
         if c.status in (FAIL_STATUS, ERROR_STATUS) and c.log:
             lines.append(f"\n--- {c.name} ---\n{c.log.rstrip()}")
-    lines.append(f"\nverdict: {report.verdict}")
+    kind = f" ({report.human_kind})" if report.human_kind else ""
+    lines.append(f"\nverdict: {report.verdict}{kind}")
     if report.reproduce:
         lines.append(f"reproduce: {report.reproduce}")
     return "\n".join(lines)
@@ -86,7 +96,9 @@ def render_text(report: Report) -> str:
 def render_markdown(report: Report) -> str:
     icon = {"PASS": "✅", "FAIL": "❌", "NEEDS_HUMAN": "⚠️", "ERROR": "💥"}[report.verdict]
     lines = [
-        f"**`tools/verify` verdict: {icon} {report.verdict}** at `{report.sha[:12]}`"
+        f"**`tools/verify` verdict: {icon} {report.verdict}"
+        + (f" ({report.human_kind})" if report.human_kind else "")
+        + f"** at `{report.sha[:12]}`"
         + (f" against `{report.base}` (merge-base `{report.merge_base[:12]}`)" if report.base else ""),
         "",
     ]

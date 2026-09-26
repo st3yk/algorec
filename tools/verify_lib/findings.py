@@ -12,8 +12,9 @@ class Finding:
     level: str
     message: str
     where: str = ""
+    hard: bool = False
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, object]:
         return asdict(self)
 
     def render(self) -> str:

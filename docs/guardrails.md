@@ -21,6 +21,14 @@ The exit code is the verdict:
 | 0 | `PASS` | Every check passed at this commit, and nothing needs a human. |
 | 1 | `FAIL` | At least one check failed. |
 | 2 | `NEEDS_HUMAN` | Every check passed, but the branch changes a guardrail, weakens a test, uses a `Docs-Unchanged:` escape, or was judged by its own checks. Only a human can accept it. |
+
+NEEDS_HUMAN comes in two kinds, reported as `human_kind` in the JSON report
+and after the verdict in text and Markdown:
+
+| Kind | When | What it means for a PR |
+|---|---|---|
+| `soft` | Only findings where the change is probably fine and a human should look: an edited existing test, a removed or renamed test, a new skip, module-level code in a test file, a `Docs-Unchanged:` trailer, lines removed from the golden. | The PR may be opened ready for review, labelled `needs-human`. |
+| `hard` | Any finding where the judge can't vouch for the change: a guardrail file changed, a `py_test` rule removed, tagged `manual` or changed in how it runs, a BUILD file's `load()` lines changed, the judge isn't the merge-base's copy, or the tests fail under the base's guardrails. | No PR. A human applies the change. |
 | 3 | `ERROR` | The judge couldn't run: uncommitted changes, an unknown base, or Bazel crashed. Never read it as PASS. |
 
 Each run writes `.verify/reports/<sha>.json` and `.md` (ignored by git). The

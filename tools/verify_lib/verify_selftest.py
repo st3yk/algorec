@@ -483,6 +483,36 @@ def test_verdicts(statuses, levels, verdict):
     assert verdict_of(checks, findings) == verdict
 
 
+@pytest.mark.parametrize(
+    "findings, checks, kind",
+    [
+        ([Finding("docs", HUMAN, "trailer")], ["pass"], "soft"),
+        ([Finding("guardrails", HUMAN, "test changed")], ["pass"], "soft"),
+        ([Finding("guardrails", HUMAN, "guardrail change", hard=True)], ["pass"], "hard"),
+        ([Finding("docs", HUMAN, "trailer")], ["needs_human"], "hard"),
+        ([], ["pass"], ""),
+        ([Finding("x", FAIL, "bad"), Finding("guardrails", HUMAN, "g", hard=True)], ["pass"], ""),
+    ],
+)
+def test_needs_human_is_soft_unless_a_hard_finding_or_check_says_otherwise(findings, checks, kind):
+    report = Report(mode="gate", sha="a" * 40)
+    report.checks = [CheckResult(f"c{i}", s) for i, s in enumerate(checks)]
+    report.findings = findings
+    assert report.human_kind == kind
+    assert report.to_dict()["human_kind"] == kind
+
+
+def test_guardrail_file_and_rule_changes_are_hard(repo):
+    manual = BUILD.replace(")\n", '    tags = ["manual"],\n)\n')
+    findings = guard(
+        repo, {"tests/BUILD.bazel": manual, "ruff.toml": "x\n", "tests/test_x.py": TEST_FILE + "\nX = 1\n"}
+    )
+    assert {f.message.split(":")[0] for f in findings if f.hard} == {
+        "guardrail change",
+        "py_test rule is now tagged manual, so //... skips it",
+    }
+
+
 def test_the_report_names_the_sha_and_how_to_reproduce():
     report = Report(
         mode="gate", sha="a" * 40, base="master", merge_base="b" * 40, reproduce="tools/verify --base master"

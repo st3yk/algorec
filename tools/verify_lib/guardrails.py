@@ -228,6 +228,7 @@ def check_guardrails(
             f"guardrail change: {', '.join(p.rsplit('/', 1)[-1] for p in paths[:6])}"
             + (f" and {len(paths) - 6} more" if len(paths) > 6 else ""),
             group,
+            hard=True,
         )
         for group, paths in sorted(groups.items())
     ]
@@ -279,14 +280,16 @@ def _check_tests(
     for label, attrs in sorted(base_rules.items()):
         now = head_rules.get(label)
         if now is None:
-            out.append(Finding("guardrails", HUMAN, "py_test rule was removed", label))
+            out.append(Finding("guardrails", HUMAN, "py_test rule was removed", label, hard=True))
             continue
         if "manual" in now.get("tags", "") and "manual" not in attrs.get("tags", ""):
-            out.append(Finding("guardrails", HUMAN, "py_test rule is now tagged manual, so //... skips it", label))
+            out.append(
+                Finding("guardrails", HUMAN, "py_test rule is now tagged manual, so //... skips it", label, hard=True)
+            )
         attrs_changed = sorted(k for k in set(attrs) | set(now) if attrs.get(k) != now.get(k) and k != "tags")
         if attrs_changed:
             detail = "; ".join(f"{k}: `{attrs.get(k, '')[:60]}` -> `{now.get(k, '')[:60]}`" for k in attrs_changed[:3])
-            out.append(Finding("guardrails", HUMAN, f"py_test rule changed how it runs ({detail})", label))
+            out.append(Finding("guardrails", HUMAN, f"py_test rule changed how it runs ({detail})", label, hard=True))
     for path in sorted(p for p in relevant if is_test_file(p)):
         base_text, head_text = read_base(path), read_head(path)
         if head_text is None:
@@ -297,7 +300,7 @@ def _check_tests(
     for path in sorted(p for p in changed if p.endswith(("BUILD.bazel", "BUILD"))):
         base_text, head_text = read_base(path), read_head(path)
         if base_text is not None and head_text is not None and _loads(base_text) != _loads(head_text):
-            out.append(Finding("guardrails", HUMAN, "a BUILD file changed which rules it loads", path))
+            out.append(Finding("guardrails", HUMAN, "a BUILD file changed which rules it loads", path, hard=True))
     base_all = sum(base_assigns.values(), Counter())
     head_all = sum(head_assigns.values(), Counter())
     for text in sorted((base_all - head_all).elements())[:5]:

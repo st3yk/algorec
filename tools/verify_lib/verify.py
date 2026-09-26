@@ -267,7 +267,7 @@ def run_gate(repo: str, base: str, deep: bool) -> Report:
         BAZEL_ENV["USE_BAZEL_VERSION"] = base_version
     report.judge, trusted = judge_identity(repo, mb)
     if not trusted:
-        report.findings.append(Finding("judge", HUMAN, f"judged by {report.judge}"))
+        report.findings.append(Finding("judge", HUMAN, f"judged by {report.judge}", hard=True))
 
     commits = gitutil.commits(repo, mb, sha)
     changed = gitutil.changed_files(repo, mb, sha)
