@@ -223,9 +223,14 @@ differs from the table. Run it after every guardrail change.
 | CI workflow edited | `guardrails` | NEEDS_HUMAN |
 | New package that no check sees | `coverage` | FAIL |
 | Uncommitted change | clean-tree | ERROR |
+| Tests disabled by an early `SystemExit(0)` above the footer | `evidence` (and `guardrails`) | FAIL |
+| Tests skipped through an alias (`_off = pytest.mark.skip`) | `evidence` (and `guardrails`) | FAIL |
+| A `tools/bazel` wrapper that fakes a passing test run, plus the neutral-rows fault | pinned Bazel ignores the wrapper; property tests | FAIL |
 
-Not in the drill: agent permission denials (they're enforced by Claude Code,
-not by a script), and mutation testing, which isn't implemented.
+Hook rows pass only with the hook's exact rejection code (exit 2 for
+PostToolUse, exit 1 for commit-msg). Not in the drill: agent permission
+denials (Claude Code enforces them, not a script), the CI workflow itself,
+and mutation testing, which isn't implemented.
 
 ## Around the agent: hooks and git hooks
 

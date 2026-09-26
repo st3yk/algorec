@@ -34,6 +34,10 @@ class Fault:
     hook: str = ""
     hook_file: str = ""
 
+    @property
+    def hook_rejects(self) -> int:
+        return 2 if self.hook == "post_edit" else 1
+
 
 def replace(rel: str, old: str, new: str) -> Edit:
     def edit(clone: str) -> None:
@@ -48,12 +52,13 @@ def replace(rel: str, old: str, new: str) -> Edit:
     return edit
 
 
-def write(rel: str, text: str) -> Edit:
+def write(rel: str, text: str, mode: int = 0o644) -> Edit:
     def edit(clone: str) -> None:
         path = os.path.join(clone, rel)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(text)
+        os.chmod(path, mode)
 
     return edit
 
@@ -87,6 +92,25 @@ def lock_hash(clone: str) -> None:
 
 
 TEST_FOOTER = 'if __name__ == "__main__":\n    raise SystemExit(pytest.main([__file__, "-q"]))\n'
+NEUTRAL_ROWS_REMOVED = both(
+    replace(
+        "steerrec/assembler.py",
+        "            add(row, b.reference * page_size - SLACK_TOL, np.inf)\n",
+        "            pass\n",
+    ),
+    replace(
+        "steerrec/assembler.py",
+        "            add(row, -np.inf, b.reference * page_size + SLACK_TOL)\n",
+        "            pass\n",
+    ),
+    touch_doc("docs/code/assembler.md"),
+)
+FAKE_BAZEL_WRAPPER = """#!/usr/bin/env bash
+if [[ "${1:-}" == test ]]; then
+  exit 0
+fi
+exec "$BAZEL_REAL" "$@"
+"""
 
 FAULTS = [
     Fault("control: a docs-only change", touch_doc("docs/concepts.md"), "docs: add a drill note", "PASS"),
@@ -145,21 +169,34 @@ FAULTS = [
         "FAIL",
     ),
     Fault(
-        "assembler serves a page below neutral",
+        "assembler serves a page below neutral", NEUTRAL_ROWS_REMOVED, "fix(assembler): drop the neutral rows", "FAIL"
+    ),
+    Fault(
+        "tests disabled by an early exit above the footer",
+        replace(
+            "tests/test_targets.py",
+            TEST_FOOTER,
+            'if __name__ == "__main__":\n    raise SystemExit(0)\n\n\n' + TEST_FOOTER,
+        ),
+        "test(targets): tidy the entry point",
+        "FAIL",
+    ),
+    Fault(
+        "tests skipped through an alias",
         both(
             replace(
-                "steerrec/assembler.py",
-                "            add(row, b.reference * page_size - SLACK_TOL, np.inf)\n",
-                "            pass\n",
+                "tests/test_model.py",
+                "\n\ndef test_item_rejects_non_probabilities",
+                "\n\n_off = pytest.mark.skip\n\n\n@_off\ndef test_item_rejects_non_probabilities",
             ),
-            replace(
-                "steerrec/assembler.py",
-                "            add(row, -np.inf, b.reference * page_size + SLACK_TOL)\n",
-                "            pass\n",
-            ),
-            touch_doc("docs/code/assembler.md"),
         ),
-        "fix(assembler): drop the neutral rows",
+        "test(model): park a test",
+        "FAIL",
+    ),
+    Fault(
+        "a tools/bazel wrapper that fakes a passing test run",
+        both(write("tools/bazel", FAKE_BAZEL_WRAPPER, 0o755), NEUTRAL_ROWS_REMOVED),
+        "build: add a bazel wrapper",
         "FAIL",
     ),
     Fault(
@@ -269,7 +306,7 @@ def main(argv: list[str] | None = None) -> int:
             [os.path.join(clone, "tools", "verify"), "--base", "drill-base"], cwd=clone, capture_output=True, env=env
         )
         verdict = EXIT.get(result.returncode, f"exit {result.returncode}")
-        ok = verdict == fault.verdict and (hook_code is None or hook_code != 0)
+        ok = verdict == fault.verdict and (hook_code is None or hook_code == fault.hook_rejects)
         failures += not ok
         hook = "" if hook_code is None else f" hook {fault.hook}: exit {hook_code}"
         mark = "ok  " if ok else "MISS"
@@ -280,7 +317,6 @@ def main(argv: list[str] | None = None) -> int:
             print("\n".join(result.stdout.decode(errors="replace").splitlines()[:25]))
         git(clone, "reset", "--quiet", "--hard")
     if not args.keep:
-        subprocess.run(["git", "-C", source, "worktree", "prune"], check=False)
         shutil.rmtree(work, ignore_errors=True)
     print(f"drill: {len(faults) - failures}/{len(faults)} as expected")
     return 1 if failures else 0
