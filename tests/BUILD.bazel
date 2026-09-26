@@ -72,3 +72,9 @@ py_test(
         "@pypi//pytest",
     ],
 )
+
+filegroup(
+    name = "py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//visibility:public"],
+)

@@ -12,6 +12,7 @@ These pages describe **what is built**. For where the project is heading, see
 | [code/synthetic-and-demo.md](code/synthetic-and-demo.md) | The synthetic catalog and the demo CLI. |
 | [service-contract.md](service-contract.md) | The gRPC contract in `proto/`, field by field, and what backs it today. |
 | [testing.md](testing.md) | What each test file establishes, and test conventions. |
+| [guardrails.md](guardrails.md) | The checks that judge a change: lint, types, conventions, and how to run them. |
 | [decisions.md](decisions.md) | Non-obvious choices, findings from building, rejected alternatives. |
 
 ## Architecture of the built part
@@ -44,6 +45,7 @@ and `synthetic` and `demo` sit on top. Nothing imports `demo`.
 | `//proto:recommender_proto` | The service contract (`proto_library`). |
 | `//tests:test_*` | One `py_test` per test file. |
 | `//:requirements`, `//:requirements.update`, `//:requirements_test` | The PyPI lock file and its freshness check. |
+| `//tools/lint:*` | Lint, format and type checks, and `:fix` (see [guardrails.md](guardrails.md)). |
 
 For setup and dependency management, see [`BUILDING.md`](../BUILDING.md).
 

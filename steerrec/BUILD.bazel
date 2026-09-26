@@ -68,3 +68,8 @@ py_binary(
         ":targets",
     ],
 )
+
+filegroup(
+    name = "py_srcs",
+    srcs = glob(["*.py"]),
+)

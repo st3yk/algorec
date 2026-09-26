@@ -29,6 +29,7 @@ bazel build //...
 bazel test //...
 bazel run //steerrec:demo -- --sweep-only
 bazel run //:requirements.update   # after editing requirements.in
+bazel run //tools/lint:fix         # apply ruff fixes and formatting
 ```
 
 There is no local venv. Always run Python through Bazel: the system Python's
@@ -45,6 +46,7 @@ scipy has no `milp`.
 | `steerrec/synthetic.py` | Seeded fake catalog |
 | `steerrec/demo.py` | CLI |
 | `proto/` | Service contract |
+| `tools/` | Guardrails: lint, conventions, verify (see `docs/guardrails.md`) |
 | `tests/` | One `py_test` per file (see `docs/testing.md`) |
 | `docs/` | Documentation of what is built |
 
