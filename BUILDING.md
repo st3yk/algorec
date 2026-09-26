@@ -30,3 +30,5 @@ bazel run //:requirements.update  # 2. re-lock
 ```
 
 `bazel test //...` includes `//:requirements_test`, which fails if the lock file is out of date with `requirements.in`.
+
+Bazel modules (`rules_python`, `protobuf`) are pinned in `MODULE.bazel`, and their resolution in `MODULE.bazel.lock`. The `protobuf` module provides `proto_library` for `//proto:recommender_proto` and uses a prebuilt `protoc`, so nothing is compiled from C++ source.

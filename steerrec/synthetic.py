@@ -1,13 +1,7 @@
-"""A seeded, synthetic candidate pool: the stand-in for real videos.
+"""A seeded synthetic candidate pool, standing in for scoring and ranking until
+they exist. Relevance is deliberately biased toward light content.
 
-In the full system each video's q comes from the calibrated scoring heads
-(plan Steps 5-7) and p from the ranker (Step 12). Here every item gets a hidden
-"kind" and its q/p are drawn from distributions that depend on that kind, so the
-demo has something human-readable to show without any video processing.
-
-The relevance model is deliberately biased toward light content, the way an
-engagement-trained ranker tends to be. That is what makes the unsteered feed
-skew toward "brain-rot" and gives the slider something to do.
+See docs/code/synthetic-and-demo.md.
 """
 
 import random
@@ -25,8 +19,6 @@ class Kind(Enum):
     NEITHER = "neither"
 
 
-# Share of each kind in the catalog, and the Beta(a, b) parameters for
-# (q_educational, q_light, relevance p) of that kind.
 _MIX = {
     Kind.LIGHT: 0.45,
     Kind.EDUCATIONAL: 0.25,
@@ -51,12 +43,11 @@ _TITLE_FORMATS = {
 @dataclass(frozen=True)
 class Catalog:
     items: list[Item]
-    titles: dict[str, str]   # video_id -> human-readable title
-    kinds: dict[str, Kind]   # video_id -> hidden ground-truth kind (for display only)
+    titles: dict[str, str]
+    kinds: dict[str, Kind]
 
 
 def make_catalog(n_items: int = 300, n_creators: int = 120, seed: int = 0) -> Catalog:
-    """Deterministic for a given (n_items, n_creators, seed)."""
     if n_items < 0 or n_creators <= 0:
         raise ValueError("need n_items >= 0 and n_creators > 0")
     rng = random.Random(seed)

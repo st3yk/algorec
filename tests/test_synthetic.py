@@ -26,13 +26,9 @@ def test_catalog_kinds_and_scores_are_sensible():
 
     assert mean(Kind.EDUCATIONAL, lambda it: it.q_of(EDUCATIONAL)) > 0.7
     assert mean(Kind.LIGHT, lambda it: it.q_of(LIGHT)) > 0.7
-    # The ranker stand-in favors light content, so the unsteered feed skews light.
     assert mean(Kind.LIGHT, lambda it: it.p) > mean(Kind.EDUCATIONAL, lambda it: it.p) + 0.1
 
 
-# With the default end points, the synthetic users' neutral pages are already lighter than
-# T_max(light) = 0.6 and less purely educational than T_min(edu) = 0.1, so the left-side
-# bounds never bite. The "left_active" registry moves those end points so they do.
 REGISTRIES = {
     "default": DEFAULT_REGISTRY,
     "left_active": Registry([Dimension(EDUCATIONAL, t_min=0.01), Dimension(LIGHT, t_max=0.9)]),
@@ -41,10 +37,6 @@ REGISTRIES = {
 
 @pytest.mark.parametrize("registry_name", sorted(REGISTRIES))
 def test_criterion_1_mean_share_is_monotone_over_synthetic_users(registry_name):
-    """Plan criterion 1 on synthetic data: 11 slider points (step 0.2), mean over 12 users
-    (catalog seeds), non-shortfall pages only. For each side, the pushed-up dimension's total
-    share must not fall, and the pushed-down dimension's pure share must not rise, by more
-    than EPS between neighbouring points."""
     registry = REGISTRIES[registry_name]
     catalogs = [make_catalog(150, n_creators=80, seed=seed) for seed in range(12)]
     points = [k / 10 for k in range(-10, 11, 2)]
@@ -56,7 +48,7 @@ def test_criterion_1_mean_share_is_monotone_over_synthetic_users(registry_name):
             assert not page.used_fallback and not page.hit_time_limit
             if page.shortfalls:
                 continue
-            q = lambda it, d: it.q_of(d)  # noqa: E731
+            q = lambda it, d: it.q_of(d)
             rows.append({
                 "edu": sum(q(it, EDUCATIONAL) for it in page.items) / P,
                 "light": sum(q(it, LIGHT) for it in page.items) / P,
@@ -66,7 +58,7 @@ def test_criterion_1_mean_share_is_monotone_over_synthetic_users(registry_name):
         assert len(rows) >= 8, f"too many shortfall pages at s={s}"
         mean[s] = {k: sum(r[k] for r in rows) / len(rows) for k in rows[0]}
     right = [s for s in points if s >= 0]
-    left = [s for s in reversed(points) if s <= 0]  # from 0 toward -1
+    left = [s for s in reversed(points) if s <= 0]
     for a, b in zip(right, right[1:]):
         assert mean[b]["edu"] >= mean[a]["edu"] - EPS
         assert mean[b]["pure_light"] <= mean[a]["pure_light"] + EPS

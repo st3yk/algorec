@@ -5,14 +5,11 @@ import sys
 
 import pytest
 import scipy
-from scipy.optimize import milp  # noqa: F401  (import is the check: milp needs scipy >= 1.9)
+from scipy.optimize import milp
 
 
 def test_python_is_hermetic_3_12():
     assert sys.version_info[:2] == (3, 12)
-    # The interpreter must be rules_python's downloaded 3.12, not a system Python.
-    # sys.executable is a venv shim; one of its symlink hops names the toolchain repo
-    # (e.g. .../rules_python++python+python_3_12_<platform>/bin/python3).
     hops, path = [], sys.executable
     for _ in range(10):
         hops.append(path)

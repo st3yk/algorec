@@ -37,9 +37,6 @@ def gap(bound, items):
     return max(0.0, bound.mass - total) if bound.kind is BoundKind.LOWER_TOTAL else max(0.0, total - bound.mass)
 
 
-# --- s = 0 and ordering ---------------------------------------------------------
-
-
 @pytest.mark.parametrize("seed", range(10))
 def test_neutral_page_is_exactly_u0(seed):
     pool = random_pool(random.Random(seed), 40, 15)
@@ -49,23 +46,21 @@ def test_neutral_page_is_exactly_u0(seed):
 
 
 def test_full_slider_pulls_educational_items_in():
-    # U0 is all light; plenty of relevant-enough educational items exist.
     light = [Item(f"l{i}", f"cl{i}", 0.9 - i * 0.01, q={EDUCATIONAL: 0.05, LIGHT: 0.9}) for i in range(10)]
     edu = [Item(f"e{i}", f"ce{i}", 0.5 - i * 0.01, q={EDUCATIONAL: 0.9, LIGHT: 0.1}) for i in range(10)]
     page = assemble(light + edu, single_slider(1.0), DEFAULT_REGISTRY, P)
     assert page.shortfalls == []
     edu_share = sum(it.q_of(EDUCATIONAL) for it in page.items) / P
     assert edu_share >= DEFAULT_REGISTRY[EDUCATIONAL].t_max - 1e-6
-    assert page.steered_ids  # something had to change
+    assert page.steered_ids
 
 
 def test_steered_items_are_evenly_spaced():
     light = [Item(f"l{i}", f"cl{i}", 0.9 - i * 0.01, q={EDUCATIONAL: 0.0, LIGHT: 0.9}) for i in range(10)]
     edu = [Item(f"e{i}", f"ce{i}", 0.5 - i * 0.01, q={EDUCATIONAL: 1.0, LIGHT: 0.0}) for i in range(10)]
-    # Push only educational (light at 0 = unconstrained): t_edu = 0 + 0.5 * (0.6 - 0) -> 3 items.
     page = assemble(light + edu, {EDUCATIONAL: 0.5}, DEFAULT_REGISTRY, P)
     positions = [k + 1 for k, it in enumerate(page.items) if it.video_id in page.steered_ids]
-    assert positions == [2, 5, 8]  # the plan's example
+    assert positions == [2, 5, 8]
 
 
 @pytest.mark.parametrize("n", range(1, 13))
@@ -81,17 +76,14 @@ def test_steered_positions_are_distinct_and_evenly_spread_for_every_count(n):
         if 0 < k < n:
             gaps = [b - a for a, b in zip(pos, pos[1:])]
             assert not gaps or max(gaps) - min(gaps) <= 1
-            assert pos[0] <= n / k and (n - 1 - pos[-1]) <= n / k  # no bunching at either end
+            assert pos[0] <= n / k and (n - 1 - pos[-1]) <= n / k
 
 
 def test_unknown_score_key_anywhere_in_pool_is_rejected():
     pool = [Item(f"v{i}", f"c{i}", 0.9 - i * 0.01, q={EDUCATIONAL: 0.1}) for i in range(P)]
-    pool.append(Item("bad", "cx", 0.01, q={"educationl": 0.9}))  # not in U0, still rejected
+    pool.append(Item("bad", "cx", 0.01, q={"educationl": 0.9}))
     with pytest.raises(ValueError):
         assemble(pool, single_slider(0.5), DEFAULT_REGISTRY, P)
-
-
-# --- always feasible, shortfall reported ------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -100,7 +92,7 @@ def test_unknown_score_key_anywhere_in_pool_is_rejected():
         [],
         [Item("a", "c1", 0.5, q={EDUCATIONAL: 0.1})],
         [Item(f"v{i}", "same", 0.5, q={EDUCATIONAL: 0.9}) for i in range(20)],
-        [Item(f"v{i}", f"c{i}", 0.5, q={LIGHT: 1.0}) for i in range(20)],  # no educational supply at all
+        [Item(f"v{i}", f"c{i}", 0.5, q={LIGHT: 1.0}) for i in range(20)],
     ],
     ids=["empty", "one-item", "one-creator", "all-light"],
 )
@@ -118,18 +110,15 @@ def test_degenerate_pools_never_raise_and_report_shortfall(pool, s):
 
 
 def test_all_light_pool_at_max_learning_fills_page_and_reports_both_shortfalls():
-    # U0 is pure light: u_edu = 0 -> t_edu = 0.6 (mass 6); ubar_light = 1 -> t_light = 0.1 (mass 1).
     pool = [Item(f"v{i}", f"c{i}", 0.5, q={LIGHT: 1.0}) for i in range(20)]
     page = assemble(pool, single_slider(1.0), DEFAULT_REGISTRY, P)
-    assert len(page.items) == P  # a full page beats an empty slot
+    assert len(page.items) == P
     reported = {sf.dim_id: sf.amount for sf in page.shortfalls if sf.kind is ShortfallKind.BOUND}
     assert reported == {EDUCATIONAL: pytest.approx(6.0), LIGHT: pytest.approx(9.0)}
 
 
 @pytest.mark.parametrize("seed", range(20))
 def test_bounds_are_met_whenever_supply_makes_them_feasible(seed):
-    # Independent of the shortfall formula: with at least P clear items of each kind from
-    # distinct creators, every bound is feasible, so there must be no shortfall at all.
     rng = random.Random(seed)
     edu = [Item(f"e{i}", f"ce{i}", rng.uniform(0.05, 0.6), q={EDUCATIONAL: 1.0, LIGHT: 0.0}) for i in range(15)]
     light = [Item(f"l{i}", f"cl{i}", rng.uniform(0.4, 1.0), q={EDUCATIONAL: 0.0, LIGHT: 1.0}) for i in range(15)]
@@ -160,12 +149,7 @@ def test_every_bound_is_met_or_its_gap_is_reported(seed):
             assert b.dim_id not in reported
 
 
-# --- stage 2 (clarity) --------------------------------------------------------------
-
-
 def clarity_pool(a, b):
-    """U0 = {L, E1, E2}. At s = 1 the light bound forces L out and the edu bound is met by
-    E1 + E2, so exactly one free slot is filled by `a` or `b` (neither is light)."""
     return [
         Item("L", "cL", 0.95, q={EDUCATIONAL: 0.0, LIGHT: 0.9}),
         Item("E1", "c1", 0.90, q={EDUCATIONAL: 1.0, LIGHT: 0.0}),
@@ -180,8 +164,6 @@ def free_slot(page):
 
 
 def test_stage2_objective_is_q_times_q_minus_half():
-    # A: q_edu 0.3 -> clarity -0.06; B: q_edu 0 -> clarity 0. q(q - 0.5) prefers B (not borderline);
-    # a plain "maximize q" objective would prefer A. B costs 0.005 relevance, within delta.
     a = Item("A", "cA", 0.600, q={EDUCATIONAL: 0.3, LIGHT: 0.0})
     b = Item("B", "cB", 0.595, q={EDUCATIONAL: 0.0, LIGHT: 0.0})
     page = assemble(clarity_pool(a, b), single_slider(1.0), DEFAULT_REGISTRY, 3)
@@ -193,13 +175,11 @@ def test_stage2_prefers_clear_items_within_delta_but_not_beyond():
     clear = Item("C", "cC", 0.59, q={EDUCATIONAL: 0.95, LIGHT: 0.0})
     vague = Item("D", "cD", 0.60, q={EDUCATIONAL: 0.55, LIGHT: 0.0})
     assert free_slot(assemble(clarity_pool(clear, vague), single_slider(1.0), DEFAULT_REGISTRY, 3)) == "C"
-    # Same, but the clear item costs 0.4 relevance: more than delta * R1 (~0.048), so it loses.
     far = Item("C", "cC", 0.20, q={EDUCATIONAL: 0.95, LIGHT: 0.0})
     assert free_slot(assemble(clarity_pool(far, vague), single_slider(1.0), DEFAULT_REGISTRY, 3)) == "D"
 
 
 def test_stage2_breaks_clarity_ties_by_relevance_regardless_of_pool_order():
-    # Light items all have q_edu = 0 (equal clarity); the light bound leaves room for one.
     light = [Item(f"l{i}", f"cl{i}", 0.90 - i * 0.01, q={EDUCATIONAL: 0.0, LIGHT: 0.9}) for i in range(10)]
     edu = [Item(f"e{i}", f"ce{i}", 0.5, q={EDUCATIONAL: 1.0, LIGHT: 0.0}) for i in range(10)]
     for pool in (light + edu, list(reversed(light + edu))):
@@ -210,7 +190,6 @@ def test_stage2_breaks_clarity_ties_by_relevance_regardless_of_pool_order():
 
 @pytest.mark.parametrize("seed", range(20))
 def test_page_does_not_depend_on_pool_order_even_with_tied_scores(seed):
-    # Scores rounded to one decimal, as quantized calibrated outputs would be: many exact ties.
     rng = random.Random(seed)
     pool = [
         Item(f"v{i:03d}", f"c{rng.randrange(30)}", round(rng.random(), 1),
@@ -226,9 +205,6 @@ def test_page_does_not_depend_on_pool_order_even_with_tied_scores(seed):
 
 
 def test_creator_limited_pool_keeps_the_page_full():
-    # Regression (M2 round 3): every full page must contain U6 (its creator has no other item),
-    # and the only full page not worse than neutral is U0. Stage 0 used to prefer dropping an
-    # item (cardinality slack 3.0) over U0's bound slack (4.0) and served 5 of 6 items.
     u = [Item(f"U{i}", f"c{i}", 0.9 - i * 0.001, q={EDUCATIONAL: 0.0, LIGHT: 0.0}) for i in range(1, 6)]
     u6 = Item("U6", "c6", 0.8, q={EDUCATIONAL: 0.0, LIGHT: 1.0})
     a = [Item(f"A{i}", f"c{i}", 0.3 - i * 0.001, q={EDUCATIONAL: 0.9, LIGHT: 1.0}) for i in range(1, 6)]
@@ -237,12 +213,7 @@ def test_creator_limited_pool_keeps_the_page_full():
     assert all(sf.kind is not ShortfallKind.CARDINALITY for sf in page.shortfalls)
 
 
-# --- never worse than neutral, even with shortfall (plan Step 14) ----------------------
-
-
 def test_shortfall_page_is_never_below_neutral_minimal_case():
-    # A is educational-ish but very light; N is less educational and not light. At s = +1 both
-    # bounds are unmeetable. Trading A for N would shrink the light gap but drop edu below U0.
     a = Item("A", "cA", 0.9, q={EDUCATIONAL: 0.5, LIGHT: 0.9})
     n = Item("N", "cN", 0.5, q={EDUCATIONAL: 0.3, LIGHT: 0.0})
     for solver in (milp, failing_solver):
@@ -253,10 +224,6 @@ def test_shortfall_page_is_never_below_neutral_minimal_case():
 
 @pytest.mark.parametrize("seed", range(30))
 def test_every_page_stays_on_the_slider_side_of_neutral(seed):
-    # Scaled-up version of the minimal case, so the trade-off really happens: the relevant items
-    # are mid-educational and very light (both bounds unmeetable at |s| = 1), and the alternates
-    # are less educational but not light. Swapping toward the alternates would shrink the light
-    # miss while dropping edu below U0; the guard must forbid that in the ILP and the greedy.
     rng = random.Random(seed)
     relevant = [
         Item(f"r{i}", f"cr{i}", rng.uniform(0.7, 0.95), q={EDUCATIONAL: rng.uniform(0.4, 0.55), LIGHT: rng.uniform(0.8, 1.0)})
@@ -269,7 +236,7 @@ def test_every_page_stays_on_the_slider_side_of_neutral(seed):
     pool = relevant + alternates
     for solver in (milp, failing_solver):
         page = assemble(pool, single_slider(1.0), DEFAULT_REGISTRY, P, solver=solver)
-        assert page.shortfalls  # the scenario really is infeasible
+        assert page.shortfalls
         for b in page.bounds:
             realized = b.realized(page.items)
             if b.kind is BoundKind.LOWER_TOTAL:
@@ -278,16 +245,11 @@ def test_every_page_stays_on_the_slider_side_of_neutral(seed):
                 assert realized <= b.reference + 1e-6
 
 
-# --- optimality against brute force (stages 0-2) ------------------------------------
-
-
 def brute_force(pool, bounds, page_size, delta):
-    """Enumerate every creator-respecting page that is not worse than neutral;
-    return (min slack, best relevance, best clarity)."""
     pushed_up = bounds[0].pushed_up if bounds else ()
     w_card = 1.0 + len(bounds)
     best = []
-    full = len(unsteered_page(pool, page_size))  # the largest creator-respecting page
+    full = len(unsteered_page(pool, page_size))
     for k in range(full, page_size + 1):
         for combo in itertools.combinations(pool, k):
             if len({it.creator_id for it in combo}) < k:
@@ -297,7 +259,7 @@ def brute_force(pool, bounds, page_size, delta):
                 else (b.realized(combo) <= b.reference + 1e-9)
                 for b in bounds
             ):
-                continue  # never worse than neutral
+                continue
             slack = sum(gap(b, combo) for b in bounds) + w_card * (page_size - k)
             rel = sum(it.p for it in combo)
             clar = sum(it.q_of(d) * (it.q_of(d) - 0.5) for it in combo for d in pushed_up)
@@ -323,19 +285,10 @@ def test_ilp_matches_brute_force_on_small_pools(seed):
     rel = sum(it.p for it in items)
     pushed_up = bounds[0].pushed_up
     clar = sum(it.q_of(d) * (it.q_of(d) - 0.5) for it in items for d in pushed_up)
-    assert slack == pytest.approx(s0, abs=1e-5)       # stage 0: least possible miss
-    assert rel >= (1 - 0.02) * r1 - 1e-5               # stage 2 kept relevance within delta
-    assert clar == pytest.approx(c2, abs=1e-5)         # stage 2: clearest such page
+    assert slack == pytest.approx(s0, abs=1e-5)
+    assert rel >= (1 - 0.02) * r1 - 1e-5
+    assert clar == pytest.approx(c2, abs=1e-5)
 
-
-# --- monotonicity (plan Step 15 / criterion 1) --------------------------------------
-# Per page, the guarantee is only "bound met or shortfall reported" (tested above).
-# Per pool, the realized share is NOT exactly monotone in |s| when two bounds move at
-# once (edu up and light down): the relevance-optimal page can switch, and the share
-# can move ~0.04 against the slider while staying inside its bound. The plan's
-# criterion 1 is therefore about the MEAN share per slider point, within 0.03, over
-# pages without shortfall. That is what this test checks. (Stage 2's delta makes the
-# per-pool dips more frequent, but they occur even with delta = 0.)
 
 EPS = 0.03
 
@@ -354,7 +307,7 @@ def test_mean_realized_share_is_monotone_across_slider_points(sign):
             page = assemble(pool, single_slider(sign * step / 10), DEFAULT_REGISTRY, P)
             assert not page.used_fallback and not page.hit_time_limit
             if page.shortfalls:
-                continue  # criterion 1 reports shortfall pages separately
+                continue
             ms.append(sum(it.q_of(up) for it in page.items) / P)
             xs.append(sum(it.q_of(down) * (1 - it.q_of(up)) for it in page.items) / P)
         assert len(ms) >= 15, "too many shortfall pages for the mean to mean anything"
@@ -364,12 +317,8 @@ def test_mean_realized_share_is_monotone_across_slider_points(sign):
         assert b >= a - EPS
     for a, b in zip(mean_x, mean_x[1:]):
         assert b <= a + EPS
-    # And the sweep actually steers: the full slider moves the mean well past neutral.
     assert mean_m[-1] - mean_m[0] >= 0.15
     assert mean_x[0] - mean_x[-1] >= 0.05
-
-
-# --- solver time limit ---------------------------------------------------------------
 
 
 def test_time_limited_stage_is_reported_not_silent():
@@ -384,8 +333,6 @@ def test_time_limited_stage_is_reported_not_silent():
 
 
 def test_default_time_limit_solves_a_300_item_pool_to_optimality():
-    # Regression: with the plan's 50 ms per stage, stage 1 stopped early on this pool and
-    # returned a page with mean p 0.75 instead of 0.85.
     from steerrec.synthetic import make_catalog
 
     cat = make_catalog(300, seed=0)
@@ -395,10 +342,8 @@ def test_default_time_limit_solves_a_300_item_pool_to_optimality():
 
 
 class ScriptedSolver:
-    """Runs the real milp but can rewrite a stage's result, to exercise limit/failure paths."""
-
     def __init__(self, script):
-        self.script = script  # stage index -> "limit_with_incumbent" | "limit_no_incumbent" | "raise"
+        self.script = script
         self.calls = 0
 
     def __call__(self, *args, **kwargs):
@@ -435,8 +380,6 @@ def test_stage0_limit_without_incumbent_falls_back_to_greedy():
 @pytest.mark.parametrize("action", ["limit_no_incumbent", "raise"])
 @pytest.mark.parametrize("s", [-1.0, 0.5, 1.0])
 def test_stage1_failure_serves_a_relevant_page_not_the_relevance_blind_stage0_one(action, s):
-    # Regression: stage 0 has no relevance term, so serving its page after a stage-1
-    # failure gave mean p ~0.40 on this pool where greedy gets ~0.78 (optimum ~0.85).
     from steerrec.synthetic import make_catalog
 
     cat = make_catalog(300, seed=0)
@@ -448,26 +391,23 @@ def test_stage1_failure_serves_a_relevant_page_not_the_relevance_blind_stage0_on
 
 
 def test_stage1_failure_prefers_the_stage0_page_when_greedy_stalls(monkeypatch):
-    # The other half of the comparison: when greedy can't meet the bounds but stage 0 did,
-    # stage 0's page must win even though greedy's page (U0 here) is more relevant.
     import steerrec.assembler as asm
 
     monkeypatch.setattr(asm, "_swap_greedy", lambda pool, u0, *a, **k: list(u0))
     page = assemble(easy_pool(), single_slider(1.0), DEFAULT_REGISTRY, P, solver=ScriptedSolver({1: "raise"}))
     assert page.shortfalls == []
-    assert page.steered_ids  # not U0
+    assert page.steered_ids
 
 
 def test_better_page_treats_violations_within_tolerance_as_equal():
     from steerrec.assembler import SLACK_TOL, _better_page
 
     edu_bound = compute_bounds({EDUCATIONAL: 1.0}, [Item("u", "cu", 0.9, q={EDUCATIONAL: 0.0})], DEFAULT_REGISTRY, 1)
-    # Both pages miss the edu bound (mass 0.6) by ~0.6; they differ by less than SLACK_TOL.
     a = [Item("a", "ca", 0.2, q={EDUCATIONAL: 0.0})]
     b = [Item("b", "cb", 0.9, q={EDUCATIONAL: SLACK_TOL / 10})]
-    assert _better_page(a, b, edu_bound, DEFAULT_REGISTRY, 1) == b  # equal violation -> relevance
+    assert _better_page(a, b, edu_bound, DEFAULT_REGISTRY, 1) == b
     c = [Item("c", "cc", 0.1, q={EDUCATIONAL: 0.5})]
-    assert _better_page(b, c, edu_bound, DEFAULT_REGISTRY, 1) == c  # clearly less violation wins
+    assert _better_page(b, c, edu_bound, DEFAULT_REGISTRY, 1) == c
 
 
 def test_only_stage0_is_solved_to_a_zero_mip_gap():
@@ -482,7 +422,6 @@ def test_only_stage0_is_solved_to_a_zero_mip_gap():
 
 
 def test_budget_includes_model_building(monkeypatch):
-    # Make model building slow by slowing score validation, then check stage 0 got less time.
     import time
 
     from steerrec.registry import Registry
@@ -500,7 +439,7 @@ def test_budget_includes_model_building(monkeypatch):
         limits.append(kwargs["options"]["time_limit"])
         return milp(*args, **kwargs)
 
-    pool = easy_pool()  # 20 items -> >= 0.2 s spent validating scores before the solver runs
+    pool = easy_pool()
     assemble(pool, single_slider(1.0), DEFAULT_REGISTRY, P, time_limit_s=1.0, solver=spy)
     assert limits[0] < 0.85
 
@@ -523,9 +462,6 @@ def test_budget_is_shared_across_stages():
     assert calls[0] <= 1.0 and calls[1] < calls[0] and calls[2] < calls[1]
 
 
-# --- fallback ----------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("seed", range(15))
 def test_fallback_respects_creator_rule_and_reports_what_it_cannot_meet(seed):
     rng = random.Random(seed)
@@ -540,9 +476,8 @@ def test_fallback_respects_creator_rule_and_reports_what_it_cannot_meet(seed):
 
 
 def naive_swap_greedy(pool, u0, bounds, page_size):
-    """Reference implementation: re-sum every trial page (the pre-optimization algorithm)."""
     def violation(items):
-        return sum(gap(b, items) for b in bounds)  # all priorities are 1 in DEFAULT_REGISTRY
+        return sum(gap(b, items) for b in bounds)
 
     page = list(u0)
     while violation(page) > SLACK_TOL:
