@@ -138,6 +138,11 @@ def test_post_edit_checks_the_repo_the_file_is_in(repo, monkeypatch, capsys):
         "git push origin feat/x:feat/x",
         "git status && git push origin feat/a-b.c",
         "echo git push origin master",
+        "git push -u origin feat/x 2>&1 | tail -3",
+        "git push origin feat/x > /dev/null",
+        "git push -o ci.skip origin feat/x",
+        "git push --push-option=ci.skip origin feat/x",
+        "/usr/bin/git push -u origin feat/x",
     ],
 )
 def test_the_push_guard_allows_feature_branch_pushes(command):
@@ -157,6 +162,13 @@ def test_the_push_guard_allows_feature_branch_pushes(command):
         ("git push origin", "name the remote"),
         ("git -C . push origin HEAD:master", "only feat/*"),
         ("FOO=1 git push origin main", "only feat/*"),
+        ("git push -uf origin feat/x", "`-f` (in `-uf`)"),
+        ("/usr/bin/git push origin master", "only feat/*"),
+        ("command git push origin master", "only feat/*"),
+        ("env FOO=1 git push origin master", "only feat/*"),
+        ('bash -c "git push origin master"', "only feat/*"),
+        ("sudo -E git push --force origin feat/x", "--force"),
+        ("git push -d origin feat/x", "`-d`"),
     ],
 )
 def test_the_push_guard_rejects_everything_else(command, fragment):
