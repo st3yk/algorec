@@ -34,7 +34,10 @@ Each file in `tests/` is its own `py_test` target and ends with
 `if __name__ == "__main__": raise SystemExit(pytest.main([__file__, "-q"]))`,
 because Bazel runs the file directly. When you add a test file, add a `py_test`
 rule to `tests/BUILD.bazel` with the `//steerrec:*` and `@pypi//*` deps it
-imports.
+imports. Its
+`data` must include `//:conftest.py` and `//:pytest.ini`: the root conftest
+makes pytest write a JUnit report to Bazel's `test.xml`, and `tools/verify`
+fails any test function without a passed result there.
 
 ## What each file establishes
 

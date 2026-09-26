@@ -17,6 +17,10 @@ py_test(
     name = "selftest",
     size = "small",
     srcs = ["verify_selftest.py"],
+    data = [
+        "//:conftest.py",
+        "//:pytest.ini",
+    ],
     main = "verify_selftest.py",
     deps = [
         ":verify_lib",
@@ -29,6 +33,8 @@ py_test(
     size = "medium",
     srcs = ["gate_selftest.py"],
     data = [
+        "//:conftest.py",
+        "//:pytest.ini",
         ":verify_lib",
         "//tools:verify",
         "//tools/proto_compat:listing",

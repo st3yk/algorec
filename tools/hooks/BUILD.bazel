@@ -19,6 +19,10 @@ py_test(
     name = "selftest",
     size = "small",
     srcs = ["hooks_selftest.py"],
+    data = [
+        "//:conftest.py",
+        "//:pytest.ini",
+    ],
     main = "hooks_selftest.py",
     deps = [
         ":hooks",

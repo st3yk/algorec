@@ -8,6 +8,7 @@ compile_pip_requirements(
 )
 
 exports_files([
+    "conftest.py",
     "mypy.ini",
     "pytest.ini",
     "ruff.toml",

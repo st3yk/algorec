@@ -8,6 +8,7 @@ import hashlib
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -17,6 +18,7 @@ from tools.verify_lib import gitutil
 from tools.verify_lib.commits import check_commits
 from tools.verify_lib.coverage import INPUTS, check_coverage, query_expression, source_paths
 from tools.verify_lib.docs_changed import check_docs, load_map
+from tools.verify_lib.evidence import check_evidence, collect_results, required_tests
 from tools.verify_lib.findings import FAIL, HUMAN, Finding
 from tools.verify_lib.guardrails import check_guardrails, is_guardrail
 from tools.verify_lib.report import (
@@ -36,13 +38,20 @@ BAZEL_FAILURE_CODES = (1, 3)
 VERIFY_TEST_FLAGS = ("--test_output=errors", "--flaky_test_attempts=1")
 BASE_RULES_REJECT_CODES = (1, 2, 3)
 LOG_TAIL = 60
+BAZEL_ENV: dict[str, str] = {}
 BAZEL_ERROR_LINE = re.compile(r"^(ERROR|FAIL|FAILED)\b|^//\S+\s+.*\b(FAILED|TIMEOUT|NO STATUS|FLAKY)\b")
 
 
 def bazel(cwd: str, *args: str, timeout: float = 3600) -> tuple[int, str]:
     try:
         result = subprocess.run(
-            ["bazel", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL
+            ["bazel", *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            stdin=subprocess.DEVNULL,
+            env={**os.environ, **BAZEL_ENV},
         )
     except FileNotFoundError:
         return 127, "bazel is not on PATH; install bazelisk (see BUILDING.md)"
@@ -54,7 +63,14 @@ def bazel(cwd: str, *args: str, timeout: float = 3600) -> tuple[int, str]:
 
 def bazel_stdout(cwd: str, *args: str) -> tuple[int, str]:
     try:
-        result = subprocess.run(["bazel", *args], cwd=cwd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        result = subprocess.run(
+            ["bazel", *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            env={**os.environ, **BAZEL_ENV},
+        )
     except FileNotFoundError:
         return 127, "bazel is not on PATH"
     return result.returncode, result.stdout if result.returncode == 0 else result.stdout + result.stderr
@@ -151,6 +167,14 @@ def checkout(repo: str, wt: str, sha: str) -> None:
     gitutil.git(wt, "clean", "-ffdxq")
 
 
+def clear_testlogs(wt: str) -> None:
+    link = os.path.join(wt, "bazel-testlogs")
+    if os.path.islink(link) or os.path.isdir(link):
+        target = os.path.realpath(link)
+        if os.path.isdir(target):
+            shutil.rmtree(target, ignore_errors=True)
+
+
 def overlay_base_guardrails(repo: str, wt: str, mb: str) -> list[str]:
     paths = [p for p in gitutil.ls_tree(repo, mb, ".") if is_guardrail(p)]
     for path in paths:
@@ -237,6 +261,10 @@ def run_gate(repo: str, base: str, deep: bool) -> Report:
         summary = f"nothing to judge: HEAD is already in {base}. Pass the branch's real base with --base"
         report.checks.append(CheckResult("base", ERROR_STATUS, summary=summary))
         return report
+    BAZEL_ENV["BAZELISK_SKIP_WRAPPER"] = "1"
+    base_version = (gitutil.show(repo, mb, ".bazelversion") or "").strip()
+    if base_version:
+        BAZEL_ENV["USE_BAZEL_VERSION"] = base_version
     report.judge, trusted = judge_identity(repo, mb)
     if not trusted:
         report.findings.append(Finding("judge", HUMAN, f"judged by {report.judge}"))
@@ -267,7 +295,14 @@ def run_gate(repo: str, base: str, deep: bool) -> Report:
         if build.status != PASS_STATUS:
             report.checks.append(CheckResult("test", SKIP_STATUS, summary="build failed"))
         else:
+            clear_testlogs(wt)
             report.checks.append(timed("test", lambda: bazel_check("test", wt, "test", "//...", "--config=verify")))
+            found = check_evidence(
+                required_tests(head_files, lambda p: gitutil.show(repo, sha, p)),
+                collect_results(os.path.join(wt, "bazel-testlogs")),
+            )
+            report.checks.append(findings_check("evidence", found))
+            report.findings += found
             result, found = coverage_check(wt, head_files)
             report.checks.append(result)
             report.findings += found

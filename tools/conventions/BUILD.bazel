@@ -22,6 +22,10 @@ py_test(
     name = "selftest",
     size = "small",
     srcs = ["conventions_selftest.py"],
+    data = [
+        "//:conftest.py",
+        "//:pytest.ini",
+    ],
     main = "conventions_selftest.py",
     deps = [
         ":conventions",

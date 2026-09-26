@@ -4,6 +4,10 @@ py_test(
     name = "test_toolchain",
     size = "small",
     srcs = ["test_toolchain.py"],
+    data = [
+        "//:conftest.py",
+        "//:pytest.ini",
+    ],
     deps = [
         "@pypi//pytest",
         "@pypi//scipy",
@@ -14,6 +18,10 @@ py_test(
     name = "test_model",
     size = "small",
     srcs = ["test_model.py"],
+    data = [
+        "//:conftest.py",
+        "//:pytest.ini",
+    ],
     deps = [
         "//steerrec:items",
         "//steerrec:registry",
@@ -26,6 +34,10 @@ py_test(
     name = "test_targets",
     size = "small",
     srcs = ["test_targets.py"],
+    data = [
+        "//:conftest.py",
+        "//:pytest.ini",
+    ],
     deps = [
         "//steerrec:items",
         "//steerrec:registry",
@@ -38,7 +50,10 @@ py_test(
     name = "test_assembler",
     size = "small",
     srcs = ["test_assembler.py"],
-    data = ["//:pytest.ini"],
+    data = [
+        "//:conftest.py",
+        "//:pytest.ini",
+    ],
     env = {"PYTEST_ADDOPTS": "-m 'not slow and not timing'"},
     main = "test_assembler.py",
     deps = [
@@ -55,7 +70,10 @@ py_test(
     name = "test_assembler_slow",
     size = "medium",
     srcs = ["test_assembler.py"],
-    data = ["//:pytest.ini"],
+    data = [
+        "//:conftest.py",
+        "//:pytest.ini",
+    ],
     env = {"PYTEST_ADDOPTS": "-m 'slow'"},
     main = "test_assembler.py",
     tags = ["slow"],
@@ -73,7 +91,10 @@ py_test(
     name = "test_assembler_timing",
     size = "small",
     srcs = ["test_assembler.py"],
-    data = ["//:pytest.ini"],
+    data = [
+        "//:conftest.py",
+        "//:pytest.ini",
+    ],
     env = {"PYTEST_ADDOPTS": "-m 'timing'"},
     main = "test_assembler.py",
     tags = [
@@ -94,7 +115,10 @@ py_test(
     name = "test_synthetic",
     size = "small",
     srcs = ["test_synthetic.py"],
-    data = ["//:pytest.ini"],
+    data = [
+        "//:conftest.py",
+        "//:pytest.ini",
+    ],
     env = {"PYTEST_ADDOPTS": "-m 'not slow'"},
     main = "test_synthetic.py",
     deps = [
@@ -109,7 +133,10 @@ py_test(
     name = "test_synthetic_slow",
     size = "medium",
     srcs = ["test_synthetic.py"],
-    data = ["//:pytest.ini"],
+    data = [
+        "//:conftest.py",
+        "//:pytest.ini",
+    ],
     env = {"PYTEST_ADDOPTS": "-m 'slow'"},
     main = "test_synthetic.py",
     tags = ["slow"],
@@ -125,6 +152,10 @@ py_test(
     name = "test_demo",
     size = "small",
     srcs = ["test_demo.py"],
+    data = [
+        "//:conftest.py",
+        "//:pytest.ini",
+    ],
     deps = [
         "//steerrec:assembler",
         "//steerrec:demo_lib",

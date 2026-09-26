@@ -12,6 +12,7 @@ from tools.verify_lib import gitutil
 from tools.verify_lib.commits import check_commits
 from tools.verify_lib.coverage import check_coverage, source_paths
 from tools.verify_lib.docs_changed import check_docs, docs_for, load_map
+from tools.verify_lib.evidence import required_tests
 from tools.verify_lib.findings import FAIL, HUMAN, Finding
 from tools.verify_lib.gitutil import Commit
 from tools.verify_lib.guardrails import check_guardrails, is_guardrail
@@ -315,6 +316,34 @@ def test_deselecting_tests_through_a_rule_attribute_asks_a_human(repo):
     assert any("py_test rule changed how it runs" in m for m in messages(guard(repo, {"tests/BUILD.bazel": head})))
 
 
+def test_an_early_exit_above_the_footer_asks_a_human(repo):
+    early = TEST_FILE + '\nif __name__ == "__main__":\n    raise SystemExit(0)\n'
+    assert any("module-level code added" in m for m in messages(guard(repo, {"tests/test_x.py": early})))
+
+
+def test_a_skip_alias_asks_a_human(repo):
+    head = "_off = pytest.mark.skip\n" + TEST_FILE.replace("def test_b():", "@_off\ndef test_b():")
+    assert any("module-level code added" in m for m in messages(guard(repo, {"tests/test_x.py": head})))
+
+
+def test_an_early_return_asks_a_human(repo):
+    head = TEST_FILE.replace("    assert seed >= 0\n", "    return\n    assert seed >= 0\n")
+    assert any("gained a `return`" in m for m in messages(guard(repo, {"tests/test_x.py": head})))
+
+
+def test_a_changed_load_line_asks_a_human(repo):
+    head = 'load("//tests:defs.bzl", "py_test")\n\n' + BUILD
+    assert "a BUILD file changed which rules it loads" in messages(guard(repo, {"tests/BUILD.bazel": head}))
+
+
+def test_required_tests_cover_module_and_class_tests():
+    text = (
+        "def test_a():\n    pass\n\n\ndef helper():\n    pass\n\n\nclass TestK:\n    def test_b(self):\n        pass\n"
+    )
+    files = {"tests/test_x.py": text, "tests/conftest.py": "def test_no():\n    pass\n", "steerrec/a.py": text}
+    assert required_tests(list(files), files.get) == {("tests.test_x", "test_a"), ("tests.test_x.TestK", "test_b")}
+
+
 GOLDEN = "message p.M\nfield p.M 1 a optional TYPE_STRING json=a\n"
 
 
@@ -346,6 +375,11 @@ def test_a_deleted_golden_fails(repo):
         ("steerrec/assembler.py", False),
         ("proto/recommender.fields.golden", False),
         ("tests/conftest.py", True),
+        ("conftest.py", True),
+        ("tools/bazel", True),
+        ("MODULE.bazel", True),
+        (".bazelversion", True),
+        ("tests/defs.bzl", True),
     ],
 )
 def test_guardrail_paths(path, expected):

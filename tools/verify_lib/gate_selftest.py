@@ -29,9 +29,28 @@ FAKE_BAZEL = """#!/bin/sh
 case "$1" in
   --version) echo "bazel stub" ;;
   cquery) git ls-files ;;
+  test)
+    if [ -n "$FAKE_TEST_XML" ]; then
+      mkdir -p "$FAKE_TESTLOGS/t"
+      cp "$FAKE_TEST_XML" "$FAKE_TESTLOGS/t/test.xml"
+      ln -sfn "$FAKE_TESTLOGS" bazel-testlogs
+    fi
+    ;;
 esac
 exit 0
 """
+TEST_FILE = "def test_one():\n    assert True\n\n\ndef test_two():\n    assert True\n"
+
+
+def junit(*cases: str) -> str:
+    body = "".join(cases)
+    return f'<?xml version="1.0"?><testsuites><testsuite name="pytest">{body}</testsuite></testsuites>'
+
+
+def case(name: str, child: str = "") -> str:
+    return f'<testcase classname="tests.test_x" name="{name}">{child}</testcase>'
+
+
 TAMPERED_ENTRY = """#!/usr/bin/env bash
 repo="$(git rev-parse --show-toplevel)"
 PYTHONPATH="$repo" exec python3 -m tools.verify_lib.verify --repo "$repo" "$@"
@@ -47,12 +66,14 @@ class Gate:
         self._script(os.path.join(bin_dir, "bazel"), FAKE_BAZEL)
         self._script(os.path.join(bin_dir, "python3"), f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
         self.env["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+        self.env["FAKE_TESTLOGS"] = os.path.join(root, "testlogs")
+        self.xml = os.path.join(root, "test.xml")
         os.makedirs(self.repo)
         self.git("init", "-q", "-b", "master")
         for rel in JUDGE_FILES:
             self.copy(rel)
         for name in os.listdir(os.path.join(RUNFILES, "tools/verify_lib")):
-            if name.endswith((".py", ".json")):
+            if name.endswith((".py", ".json")) and not name.endswith("_selftest.py"):
                 self.copy(f"tools/verify_lib/{name}")
         self.write("README.md", "x\n")
         self.commit("chore: start")
@@ -178,6 +199,34 @@ def test_the_base_entry_catches_a_branch_that_tampers_with_entry_and_judge(gate)
     assert gate.verify("--base", "master")[0] == 0
     code, report = gate.verify("--base", "master", entry="master")
     assert code == 2 and "guardrails" in finding_checks(report)
+
+
+def test_every_test_function_needs_a_passed_result(gate):
+    gate.write("tests/test_x.py", TEST_FILE)
+    gate.commit("test: add tests")
+    with open(gate.xml, "w") as f:
+        f.write(junit(case("test_one"), case("test_two[1]"), case("test_two[2]")))
+    gate.env["FAKE_TEST_XML"] = gate.xml
+    assert gate.verify("--base", "master")[0] == 0
+
+
+@pytest.mark.parametrize(
+    "cases, fragment",
+    [
+        ((), "`test_one` never ran"),
+        ((case("test_one"),), "`test_two` never ran"),
+        ((case("test_one"), case("test_two", "<skipped/>")), "`test_two` ran but never passed (skipped)"),
+        ((case("test_one"), case("test_two[1]"), case("test_two[2]", "<skipped/>")), "`test_two` was skipped"),
+    ],
+)
+def test_missing_or_skipped_results_fail(gate, cases, fragment):
+    gate.write("tests/test_x.py", TEST_FILE)
+    gate.commit("test: add tests")
+    with open(gate.xml, "w") as f:
+        f.write(junit(*cases))
+    gate.env["FAKE_TEST_XML"] = gate.xml
+    code, report = gate.verify("--base", "master")
+    assert code == 1 and fragment in json.dumps(report)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ removed or loosened tests, skips, and a shrinking contract golden. See docs/guar
 
 import ast
 import fnmatch
+import re
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -31,6 +32,11 @@ GUARDRAIL_PATTERNS = (
     ".github/*",
     "CODEOWNERS",
     "*conftest.py",
+    "tools/bazel",
+    ".bazelversion",
+    ".bazeliskrc",
+    "MODULE.bazel",
+    "*.bzl",
 )
 GOLDEN = "proto/recommender.fields.golden"
 SKIP_NAMES = (
@@ -70,6 +76,7 @@ class TestFn:
     asserts: Counter[str] = field(default_factory=Counter)
     decorators: list[str] = field(default_factory=list)
     skips: int = 0
+    returns: int = 0
 
 
 def _module_assignments(text: str) -> Counter[str]:
@@ -78,6 +85,36 @@ def _module_assignments(text: str) -> Counter[str]:
     except SyntaxError:
         return Counter()
     return Counter(ast.unparse(node) for node in tree.body if isinstance(node, ast.Assign | ast.AnnAssign))
+
+
+def _module_code(text: str) -> Counter[str]:
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return Counter()
+    out: Counter[str] = Counter()
+    for node in tree.body:
+        if isinstance(node, ast.Import | ast.ImportFrom | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            continue
+        source = ast.unparse(node)
+        if isinstance(node, ast.Assign | ast.AnnAssign) and not re.search(r"\b(pytest|mark|skip|xfail)\b", source):
+            continue
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+            continue
+        out[source] += 1
+    return out
+
+
+def _loads(text: str) -> Counter[str]:
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return Counter()
+    return Counter(
+        ast.unparse(node)
+        for node in tree.body
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) and ast.unparse(node.value.func) == "load"
+    )
 
 
 def _test_functions(path: str, text: str) -> dict[str, TestFn]:
@@ -96,6 +133,7 @@ def _test_functions(path: str, text: str) -> dict[str, TestFn]:
                     fn.asserts[ast.unparse(inner)] += 1
             fn.skips = sum(1 for d in node.decorator_list if _is_skip(d))
             fn.skips += sum(1 for inner in ast.walk(node) if isinstance(inner, ast.Call) and _is_skip(inner.func))
+            fn.returns = sum(1 for inner in ast.walk(node) if isinstance(inner, ast.Return))
             out[node.name] = fn
     return out
 
@@ -198,6 +236,10 @@ def _check_tests(
             out.append(Finding("guardrails", HUMAN, f"`{name}` lost or changed `@{text[:100]}`", news[0].path))
         if sum(fn.skips for fn in news) > sum(fn.skips for fn in olds):
             out.append(Finding("guardrails", HUMAN, f"`{name}` gained a skip or xfail", news[0].path))
+        if name.startswith("test") and sum(fn.returns for fn in news) > sum(fn.returns for fn in olds):
+            out.append(
+                Finding("guardrails", HUMAN, f"`{name}` gained a `return`, which can end it early", news[0].path)
+            )
     for name, news in sorted(head_fns.items()):
         if name not in base_fns and any(fn.skips for fn in news):
             out.append(Finding("guardrails", HUMAN, f"new test `{name}` is skipped or xfailed", news[0].path))
@@ -208,10 +250,21 @@ def _check_tests(
             continue
         if "manual" in now.get("tags", "") and "manual" not in attrs.get("tags", ""):
             out.append(Finding("guardrails", HUMAN, "py_test rule is now tagged manual, so //... skips it", label))
-        changed = sorted(k for k in set(attrs) | set(now) if attrs.get(k) != now.get(k) and k != "tags")
-        if changed:
-            detail = "; ".join(f"{k}: `{attrs.get(k, '')[:60]}` -> `{now.get(k, '')[:60]}`" for k in changed[:3])
+        attrs_changed = sorted(k for k in set(attrs) | set(now) if attrs.get(k) != now.get(k) and k != "tags")
+        if attrs_changed:
+            detail = "; ".join(f"{k}: `{attrs.get(k, '')[:60]}` -> `{now.get(k, '')[:60]}`" for k in attrs_changed[:3])
             out.append(Finding("guardrails", HUMAN, f"py_test rule changed how it runs ({detail})", label))
+    for path in sorted(p for p in relevant if is_test_file(p)):
+        base_text, head_text = read_base(path), read_head(path)
+        if head_text is None:
+            continue
+        added = _module_code(head_text) - _module_code(base_text or "")
+        for text in sorted(added.elements())[:3]:
+            out.append(Finding("guardrails", HUMAN, f"module-level code added to a test file: `{text[:100]}`", path))
+    for path in sorted(p for p in changed if p.endswith(("BUILD.bazel", "BUILD"))):
+        base_text, head_text = read_base(path), read_head(path)
+        if base_text is not None and head_text is not None and _loads(base_text) != _loads(head_text):
+            out.append(Finding("guardrails", HUMAN, "a BUILD file changed which rules it loads", path))
     base_all = sum(base_assigns.values(), Counter())
     head_all = sum(head_assigns.values(), Counter())
     for text in sorted((base_all - head_all).elements())[:5]:
