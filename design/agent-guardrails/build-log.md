@@ -9,7 +9,7 @@ This log is the session's memory. Read it first when resuming. Update "Current s
 ## Current state
 
 - **Milestone / round**: M1–M6 committed; M3+M4 round-1 fixes committed; final review round (M3+M4 round 2, M5+M6 round 1, settings.json draft) next
-- **Last green commit**: `f95acfb` (every commit since `d2fcfdd` passes `bazel test //... --config=fast` on its own)
+- **Last green commit**: `8c6ce35` (every commit since `f4a7949` passes `bazel test //... --config=fast` on its own)
 - **Waiting on**: nothing
 - **Next action**: drill + gate on HEAD, final review, then commit `.claude/settings.json` last (its deny rules block edits to guardrail files), push, open the PR
 - **Blockers**: none

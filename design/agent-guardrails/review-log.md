@@ -31,53 +31,53 @@ Also found while fixing: `ffe9af0`–`ceffb8c` fail `//tools/lint:ruff_format_ch
 
 | Severity | Finding (file:line / commit) | Action (fix commit / declined — why) |
 |---|---|---|
-| blocker | The judge loader (`bootstrap.py`) is branch code, so a branch can run its own judge and report "judge: base" (reproduced as PASS) | Fixed in `ecf316a`: bash-only entry extracts the merge-base judge; the judge verifies its own files against the merge-base; docs state that only the base's entry (`git show origin/master:tools/verify \| bash -s --`) and CI can't be fooled by a branch that replaces both entry and judge; `gate_selftest` reproduces both cases |
-| major | Rename detection hides a renamed test file's weakened asserts | Fixed in `70a6911` (`--no-renames`) |
-| major | `pytestmark`, pytest `-k` in a rule's `env`, tolerance constants, helper-function asserts, `from pytest import mark`, conftest.py all bypass the AST comparison | Fixed in `70a6911` |
-| major | Coverage trusts `deps()`; an `output_group` filegroup hides a file from lint and mypy | Fixed in `00f387f` (`cquery --output=files` on the checks' input groups) |
-| major | `--base HEAD` / `HEAD~1` produce a PASS that pr_body shows | Fixed in `ecf316a` (ERROR when the base leaves nothing to judge) and `667a102` (pr_body: "wrong base") |
-| major | No end-to-end tests of the gate | Fixed in `ecf316a` (`//tools/verify_lib:gate_selftest`, stub bazel on PATH) |
-| minor | Git errors surface as FAIL with a traceback | Fixed in `ecf316a` (ERROR report, exit 3) |
-| minor | Docs describe controls that aren't built | Fixed in `ecf316a`; settings and CI now exist on the branch |
-| minor | pr_body copies non-branch hashes unchecked | Fixed in `667a102` (marked "not a commit here") |
-| minor | 300-item test: 60 s budget in a 60 s-timeout target; asserts mean p, not the optimum | Budget fixed in `a24c430`. Exact optimum declined: the pool is too large to brute-force, and a stored constant would pin today's solver rather than optimality; `hit_time_limit is False` already means HiGHS reported optimal within its gap |
-| minor | `Revert "feat: x"` rejected | Fixed in `0df90e2` |
-| minor | `--flaky_test_attempts=1` doesn't re-run cached passes | Docs fixed in `0982c07`; `--deep` is the flake hunt |
-| nit | `git clean` without `-x` leaves ignored overlay files | Fixed in `ecf316a` |
-| nit | Docs say `tools/verify*` but the pattern is exact | Fixed in `70a6911` (docs list each entry script) |
+| blocker | The judge loader (`bootstrap.py`) is branch code, so a branch can run its own judge and report "judge: base" (reproduced as PASS) | Fixed in `4271fc9`: bash-only entry extracts the merge-base judge; the judge verifies its own files against the merge-base; docs state that only the base's entry (`git show origin/master:tools/verify \| bash -s --`) and CI can't be fooled by a branch that replaces both entry and judge; `gate_selftest` reproduces both cases |
+| major | Rename detection hides a renamed test file's weakened asserts | Fixed in `1cb19ab` (`--no-renames`) |
+| major | `pytestmark`, pytest `-k` in a rule's `env`, tolerance constants, helper-function asserts, `from pytest import mark`, conftest.py all bypass the AST comparison | Fixed in `1cb19ab` |
+| major | Coverage trusts `deps()`; an `output_group` filegroup hides a file from lint and mypy | Fixed in `b6d19db` (`cquery --output=files` on the checks' input groups) |
+| major | `--base HEAD` / `HEAD~1` produce a PASS that pr_body shows | Fixed in `4271fc9` (ERROR when the base leaves nothing to judge) and `702b312` (pr_body: "wrong base") |
+| major | No end-to-end tests of the gate | Fixed in `4271fc9` (`//tools/verify_lib:gate_selftest`, stub bazel on PATH) |
+| minor | Git errors surface as FAIL with a traceback | Fixed in `4271fc9` (ERROR report, exit 3) |
+| minor | Docs describe controls that aren't built | Fixed in `4271fc9`; settings and CI now exist on the branch |
+| minor | pr_body copies non-branch hashes unchecked | Fixed in `702b312` (marked "not a commit here") |
+| minor | 300-item test: 60 s budget in a 60 s-timeout target; asserts mean p, not the optimum | Budget fixed in `9de6416`. Exact optimum declined: the pool is too large to brute-force, and a stored constant would pin today's solver rather than optimality; `hit_time_limit is False` already means HiGHS reported optimal within its gap |
+| minor | `Revert "feat: x"` rejected | Fixed in `ad9a26e` |
+| minor | `--flaky_test_attempts=1` doesn't re-run cached passes | Docs fixed in `859274d`; `--deep` is the flake hunt |
+| nit | `git clean` without `-x` leaves ignored overlay files | Fixed in `4271fc9` |
+| nit | Docs say `tools/verify*` but the pattern is exact | Fixed in `1cb19ab` (docs list each entry script) |
 
-Also found by the first full drill run (15/16): the loosened-checker row wrongly expected the branch's own commit-msg hook to reject; fixed in `f95acfb`.
+Also found by the first full drill run (15/16): the loosened-checker row wrongly expected the branch's own commit-msg hook to reject; fixed in `8c6ce35`.
 
 ---
 
 ## Final round — M3+M4 round 2, M5+M6 round 1, settings draft
 
-**Reviewed**: `7adf5e3` (whole branch) · **Verdict**: blocker=3, major=7, minor=8, nit=4 → ITERATE
+**Reviewed**: `722506a` (whole branch) · **Verdict**: blocker=3, major=7, minor=8, nit=4 → ITERATE
 
 | Severity | Finding (file:line / commit) | Action (fix commit / declined — why) |
 |---|---|---|
 | blocker | The gate says FAIL on its own head: three subjects over 72 characters | Fixed by rewording the three commits in a local, unpushed history rewrite before the push; hashes in these logs were remapped |
-| blocker | The judge trusts the branch's Bazel setup: a `tools/bazel` wrapper or a local `py_test` macro fakes a passing run | Fixed in `590a278`: pinned Bazel (`BAZELISK_SKIP_WRAPPER=1`, the merge-base's `.bazelversion`), runtime JUnit evidence for every test function, Bazel setup files and `load()` changes are guardrails; docs state what the judge still trusts |
-| blocker | An early `SystemExit(0)` above the footer, a skip alias, an early `return` disable tests without touching an assert | Fixed in `590a278` (evidence check; module-level code and added returns are NEEDS_HUMAN) and drill rows in `26ae7b4` |
-| major | Ruleset `bypass_mode: always` lets the admin push to master directly | Fixed in `79ef557` (`pull_request`) |
-| major | Settings holes (`+refspec`, `:master`, `--mirror`), branch code bypasses every deny, worktree paths not covered, legitimate commands missing | Fixed in `b66243d` (PreToolUse push guard, docs: permissions are a speed bump) and in the settings commit (`**/` paths, missing commands, destructive switch/worktree denies) |
-| major | `workflow_dispatch` judges against `HEAD~1` | Fixed in `37890ed` |
-| major | Docs overclaim what CI and the base entry guarantee | Fixed in `590a278` and `37890ed` ("What the judge still trusts"; a green check on a PR touching `.github/` is not evidence) |
-| major | pre-push, start_build and the ruleset/workflow have no tests | Fixed in `b66243d`, `8965873`, `79ef557`; actionlint isn't available offline, so the workflow gets text checks only |
+| blocker | The judge trusts the branch's Bazel setup: a `tools/bazel` wrapper or a local `py_test` macro fakes a passing run | Fixed in `91a1f5f`: pinned Bazel (`BAZELISK_SKIP_WRAPPER=1`, the merge-base's `.bazelversion`), runtime JUnit evidence for every test function, Bazel setup files and `load()` changes are guardrails; docs state what the judge still trusts |
+| blocker | An early `SystemExit(0)` above the footer, a skip alias, an early `return` disable tests without touching an assert | Fixed in `91a1f5f` (evidence check; module-level code and added returns are NEEDS_HUMAN) and drill rows in `b71dc38` |
+| major | Ruleset `bypass_mode: always` lets the admin push to master directly | Fixed in `135c763` (`pull_request`) |
+| major | Settings holes (`+refspec`, `:master`, `--mirror`), branch code bypasses every deny, worktree paths not covered, legitimate commands missing | Fixed in `1e86360` (PreToolUse push guard, docs: permissions are a speed bump) and in the settings commit (`**/` paths, missing commands, destructive switch/worktree denies) |
+| major | `workflow_dispatch` judges against `HEAD~1` | Fixed in `4fff933` |
+| major | Docs overclaim what CI and the base entry guarantee | Fixed in `91a1f5f` and `4fff933` ("What the judge still trusts"; a green check on a PR touching `.github/` is not evidence) |
+| major | pre-push, start_build and the ruleset/workflow have no tests | Fixed in `1e86360`, `9e3b98f`, `135c763`; actionlint isn't available offline, so the workflow gets text checks only |
 | major | Unrecorded plan deviations (CI timeout, `--config=ci`, test.xml upload, CI drill rows, SessionStart output) | Recorded in build-log.md |
-| major | `d2fcfdd` is a `test` commit that also widens the guardrail list | Declined a split: the rewording pass keeps commit contents unchanged, and splitting would renumber the review trail again. Recorded here |
-| minor | Hooks use `$CLAUDE_PROJECT_DIR`, wrong inside a worktree | Fixed in `b66243d` |
-| minor | pre-push judges HEAD and ignores the pushed refs | Fixed in `b66243d` |
-| minor | Stop hook re-runs on an unchanged red tree | Fixed in `b66243d` |
-| minor | `bazel info` can block the edit hook | Fixed in `b66243d` (5 s timeout) |
-| minor | Drill counts any nonzero hook exit as a catch | Fixed in `26ae7b4` |
-| minor | start_build: existing remote branch, `--base` without value, `--gate` hint | Fixed in `8965873`; the slow first push with git hooks on is documented |
-| minor | Required check has no `integration_id` | Fixed in `79ef557` |
+| major | `f4a7949` is a `test` commit that also widens the guardrail list | Declined a split: the rewording pass keeps commit contents unchanged, and splitting would renumber the review trail again. Recorded here |
+| minor | Hooks use `$CLAUDE_PROJECT_DIR`, wrong inside a worktree | Fixed in `1e86360` |
+| minor | pre-push judges HEAD and ignores the pushed refs | Fixed in `1e86360` |
+| minor | Stop hook re-runs on an unchanged red tree | Fixed in `1e86360` |
+| minor | `bazel info` can block the edit hook | Fixed in `1e86360` (5 s timeout) |
+| minor | Drill counts any nonzero hook exit as a catch | Fixed in `b71dc38` |
+| minor | start_build: existing remote branch, `--base` without value, `--gate` hint | Fixed in `9e3b98f`; the slow first push with git hooks on is documented |
+| minor | Required check has no `integration_id` | Fixed in `135c763` |
 | minor | `git switch -f`, `--discard-changes`, `worktree remove --force` allowed | Denied in the settings commit |
 | nit | Redundant allow rules, legacy `MultiEdit` matcher | Fixed in the settings commit |
 | nit | `apply_ruleset.sh` dry run needs gh auth | Declined: it reads the existing rulesets to say whether it would create or update |
-| nit | `--short=12` in CI can be longer | Fixed in `37890ed` |
-| nit | The drill prunes worktrees in the source repo | Fixed in `26ae7b4` |
+| nit | `--short=12` in CI can be longer | Fixed in `4fff933` |
+| nit | The drill prunes worktrees in the source repo | Fixed in `b71dc38` |
 
 ---
-Also found by the drill after the final-round fixes (15/19): the new root `conftest.py` was in no lint set, so `coverage` failed every gate; fixed in `493269a`. The drill is 19/19 after it.
+Also found by the drill after the final-round fixes (15/19): the new root `conftest.py` was in no lint set, so `coverage` failed every gate; fixed in `7bcbeb0`. The drill is 19/19 after it.
