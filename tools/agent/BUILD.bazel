@@ -15,6 +15,19 @@ py_test(
     deps = ["@pypi//pytest"],
 )
 
+py_test(
+    name = "open_pr_selftest",
+    size = "small",
+    srcs = ["open_pr_selftest.py"],
+    data = [
+        "open_pr.sh",
+        "//:conftest.py",
+        "//:pytest.ini",
+    ],
+    main = "open_pr_selftest.py",
+    deps = ["@pypi//pytest"],
+)
+
 filegroup(
     name = "py_srcs",
     srcs = glob(["*.py"]),

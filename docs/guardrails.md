@@ -294,6 +294,30 @@ through them. The rules stop honest mistakes and make the intended path the
 easy one. What actually protects `master` is the ruleset, and what actually
 judges a change is `tools/verify` run by the base's entry script or by CI.
 
+## Opening a PR: `tools/agent/open_pr.sh`
+
+```sh
+tools/agent/open_pr.sh <slug> [--base origin/master]
+```
+
+A PR reaches GitHub only when the change is ready. This script is the only way
+agents open or update one:
+
+1. It refuses anything but a clean `feat/*` branch (exit 64 or 65), and a base
+   without `tools/verify` (exit 3): with no trusted judge, a human opens the
+   PR.
+2. It runs the gate with the **base's** entry script
+   (`git show <base>:tools/verify | bash -s -- --base <base>`), never the
+   branch's, and reads the verdict and `human_kind` from the report.
+3. On `PASS`, it pushes the branch and opens a ready PR, or updates the open
+   one and marks it ready, with a `tools/pr_body` description. On a **soft**
+   NEEDS_HUMAN it does the same and adds the `needs-human` label.
+4. On a **hard** NEEDS_HUMAN, `FAIL` or `ERROR` it pushes nothing, opens
+   nothing, prints the report, and exits with the verdict's code.
+
+Its behavior is tested by `//tools/agent:open_pr_selftest` on scratch
+repositories with a stub `gh`.
+
 ## Starting a build: `tools/agent/start_build.sh`
 
 ```sh
