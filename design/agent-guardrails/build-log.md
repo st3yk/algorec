@@ -8,11 +8,11 @@ This log is the session's memory. Read it first when resuming. Update "Current s
 
 ## Current state
 
-- **Milestone / round**: M1–M6 committed; M3+M4 round-1 fixes committed; final review round (M3+M4 round 2, M5+M6 round 1, settings.json draft) next
-- **Last green commit**: `8c6ce35` (every commit since `f4a7949` passes `bazel test //... --config=fast` on its own)
-- **Waiting on**: nothing
-- **Next action**: drill + gate on HEAD, final review, then commit `.claude/settings.json` last (its deny rules block edits to guardrail files), push, open the PR
-- **Blockers**: none
+- **Milestone / round**: all milestones built; review stopped at the 3-round cap with 1 blocker, 2 majors, 1 minor open (review-log.md, last table)
+- **Last green commit**: HEAD (gate: NEEDS_HUMAN, the expected verdict while master has no judge; drill 19/19)
+- **Waiting on**: the owner's decision on the open findings
+- **Next action**: fix the open round-3 findings in a follow-up, or accept them as known gaps
+- **Blockers**: open review findings (see review-log.md)
 
 ## Milestones
 

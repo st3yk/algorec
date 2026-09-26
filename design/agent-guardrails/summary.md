@@ -44,6 +44,14 @@ Each of these is now caught by a script, not by care.
 
 ## Not done
 
+- **Review stopped at its cap with findings open.** The third review round
+  found one blocker and two majors that are not fixed. The blocker: a
+  module-level `globals()["test_x"] = lambda: None` replaces a real test,
+  evidence sees a passed `test_x`, and the gate says PASS on a branch that
+  breaks "never below neutral". The majors: asserts hidden in dead code
+  aren't flagged, and skips are always FAIL. See the last table in
+  `design/agent-guardrails/review-log.md` for the proposed fixes.
+
 - **Mutation testing** (plan step 9) is not implemented. `--deep` runs flake
   re-runs only.
 - **Dogfood run** (plan step 17) isn't done: a full design → build → PR run
