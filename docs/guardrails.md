@@ -91,7 +91,7 @@ empty.
 |---|---|---|
 | `commits` | A subject that isn't `type(scope): summary` (types: feat, fix, test, refactor, build, chore, docs, perf, style, ci, revert), starts with a capital, or is over 72 characters; a WIP or `fixup!` commit; a merge commit; a lock-file change mixed with other files. | |
 | `docs` | A `feat`, `fix`, `perf` or `revert` commit that changes a source in `tools/verify_lib/docs_map.json` (Python modules, `.proto` files, `tools/verify`, `.claude/` and `.github/`; not BUILD files or the golden) without changing its docs page in the same commit. | The same, with a `Docs-Unchanged: <reason>` trailer. The reason goes into the report. |
-| `guardrails` | The contract golden breaks against the base's golden, or was deleted. | A guardrail file changed (`tools/verify*`, `tools/verify_lib/`, `tools/conventions/`, `tools/lint/`, `tools/proto_compat/`, `tools/hooks/`, `tools/githooks/`, `tools/agent/`, `ruff.toml`, `mypy.ini`, `pytest.ini`, `.bazelrc`, `.claude/settings.json`, `.github/`, `CODEOWNERS`). A test function removed or renamed; an `assert`, `pytest.raises` or `pytest.approx` removed or changed; a decorator such as `parametrize` removed or changed; a skip or xfail added; a `py_test` rule removed or tagged `manual`; a line removed from the golden. |
+| `guardrails` | The contract golden breaks against the base's golden, or was deleted. | A guardrail file changed (`tools/verify*`, `tools/pr_body`, `tools/setup.sh`, `tools/github/`, `tools/verify_lib/`, `tools/conventions/`, `tools/lint/`, `tools/proto_compat/`, `tools/hooks/`, `tools/githooks/`, `tools/agent/`, `ruff.toml`, `mypy.ini`, `pytest.ini`, `.bazelrc`, `.claude/settings.json`, `.github/`, `CODEOWNERS`). A test function removed or renamed; an `assert`, `pytest.raises` or `pytest.approx` removed or changed; a decorator such as `parametrize` removed or changed; a skip or xfail added; a `py_test` rule removed or tagged `manual`; a line removed from the golden. |
 
 Test functions are compared by name across all test files, and asserts by
 their normalized source, so moving a test or reformatting an assert isn't a
@@ -134,6 +134,41 @@ repository. The ruleset requires a pull request and a green `verify` check
 (on an up-to-date branch), blocks force-pushes and deletion, and requires
 linear history. Only the repository admin can bypass it, which is how a
 NEEDS_HUMAN change is merged on purpose. Agents are never given `gh pr merge`.
+
+## The drill: `tools/verify_drill`
+
+```sh
+tools/verify_drill [--only <text>] [--keep]
+```
+
+It proves the guardrails catch what they claim. It clones the committed HEAD
+into a temporary directory (`--no-hardlinks`), makes that commit the base,
+and for each planted fault creates a branch, applies the fault, commits it,
+and runs `tools/verify --base drill-base`. Where a hook should catch the fault
+first, it runs that hook too and expects it to reject. It exits 1 if any row
+differs from the table. Run it after every guardrail change.
+
+| Planted fault | Earliest catch | Gate verdict |
+|---|---|---|
+| (control) a docs-only change | | PASS |
+| Inline `#` comment in `steerrec/` | PostToolUse hook | FAIL |
+| Function docstring | PostToolUse hook | FAIL |
+| New test file without a `py_test` rule | conventions test | FAIL |
+| `feat` change to `targets.py` without its docs page | `docs` | FAIL |
+| The same, with a `Docs-Unchanged:` trailer | `docs` | NEEDS_HUMAN |
+| Proto field renumbered | `//tools/proto_compat:test` | FAIL |
+| The ILP's "never below neutral" rows removed | "never below neutral" property tests | FAIL |
+| Shortfall silently dropped | bounds tests | FAIL |
+| Hand-edited lock-file hash | `//:requirements.test` | FAIL |
+| One assertion deleted from a test | `guardrails` | NEEDS_HUMAN |
+| Commit checker loosened on the branch, subject `update stuff` | commit-msg hook, then the base's judge | FAIL |
+| Commit subject `update stuff` | commit-msg hook | FAIL |
+| CI workflow edited | `guardrails` | NEEDS_HUMAN |
+| New package that no check sees | `coverage` | FAIL |
+| Uncommitted change | clean-tree | ERROR |
+
+Not in the drill: agent permission denials (they're enforced by Claude Code,
+not by a script), and mutation testing, which isn't implemented.
 
 ## Around the agent: hooks and git hooks
 

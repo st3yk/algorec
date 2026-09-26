@@ -13,6 +13,9 @@ from tools.verify_lib.findings import FAIL, HUMAN, Finding
 GUARDRAIL_PATTERNS = (
     "tools/verify",
     "tools/pr_body",
+    "tools/verify_drill",
+    "tools/setup.sh",
+    "tools/github/*",
     "tools/verify_lib/*",
     "tools/conventions/*",
     "tools/lint/*",
