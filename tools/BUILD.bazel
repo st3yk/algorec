@@ -4,6 +4,7 @@ filegroup(
     name = "py_srcs",
     srcs = glob(["*.py"]) + [
         "//tools/conventions:py_srcs",
+        "//tools/github:py_srcs",
         "//tools/hooks:py_srcs",
         "//tools/lint:py_srcs",
         "//tools/proto_compat:py_srcs",

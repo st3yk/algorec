@@ -185,8 +185,12 @@ evidence**: read the diff. That's acceptable while only the owner merges.
 `tools/github/ruleset.json`; with `--apply` it creates or updates it on the
 repository. The ruleset requires a pull request and a green `verify` check
 (on an up-to-date branch), blocks force-pushes and deletion, and requires
-linear history. Only the repository admin can bypass it, which is how a
-NEEDS_HUMAN change is merged on purpose. Agents are never given `gh pr merge`.
+linear history. The required check must come from GitHub Actions
+(`integration_id` 15368), so a commit status posted through the API doesn't
+count. The repository admin can bypass the ruleset **only through a pull
+request** (`bypass_mode: pull_request`): that is how a NEEDS_HUMAN change is
+merged on purpose, and it means even the admin's credentials can't push to
+`master` directly. Agents are never given `gh pr merge`.
 
 ## The drill: `tools/verify_drill`
 

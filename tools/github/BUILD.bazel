@@ -1,0 +1,31 @@
+load("@rules_python//python:py_test.bzl", "py_test")
+
+package(default_visibility = ["//visibility:public"])
+
+py_test(
+    name = "selftest",
+    size = "small",
+    srcs = ["github_selftest.py"],
+    data = [
+        "ruleset.json",
+        "//:.github/workflows/verify.yml",
+        "//:conftest.py",
+        "//:pytest.ini",
+    ],
+    main = "github_selftest.py",
+    deps = ["@pypi//pytest"],
+)
+
+filegroup(
+    name = "py_srcs",
+    srcs = glob(["*.py"]),
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**"],
+        exclude = ["**/__pycache__/**"],
+    ),
+    visibility = ["//:__pkg__"],
+)

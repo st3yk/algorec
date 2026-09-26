@@ -12,7 +12,7 @@
     {
       "actor_id": 5,
       "actor_type": "RepositoryRole",
-      "bypass_mode": "always"
+      "bypass_mode": "pull_request"
     }
   ],
   "rules": [
@@ -33,7 +33,7 @@
       "type": "required_status_checks",
       "parameters": {
         "strict_required_status_checks_policy": true,
-        "required_status_checks": [{ "context": "verify" }]
+        "required_status_checks": [{ "context": "verify", "integration_id": 15368 }]
       }
     }
   ]
