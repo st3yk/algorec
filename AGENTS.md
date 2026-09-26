@@ -27,6 +27,7 @@ relevant. Today only the steering core is built, and it runs on synthetic items.
 ```sh
 tools/verify --fast                # before every commit: fast tests and coverage
 tools/verify                       # before every push: the gate (PASS/FAIL/NEEDS_HUMAN/ERROR)
+tools/pr_body <slug>               # PR description from the gate report, git and design/<slug>/
 bazel build //...
 bazel test //...
 bazel run //steerrec:demo -- --sweep-only

@@ -2,6 +2,7 @@
 See docs/guardrails.md."""
 
 import os
+import re
 import subprocess
 from collections.abc import Mapping
 
@@ -15,6 +16,7 @@ from tools.verify_lib.docs_changed import check_docs, docs_for, load_map
 from tools.verify_lib.findings import FAIL, HUMAN, Finding
 from tools.verify_lib.gitutil import Commit
 from tools.verify_lib.guardrails import check_guardrails, is_guardrail
+from tools.verify_lib.pr_body import build, section
 from tools.verify_lib.report import CheckResult, Report, render_markdown, verdict_of
 
 ENV = {
@@ -384,6 +386,50 @@ def test_the_judge_is_extracted_from_the_given_ref(repo, tmp_path_factory):
 
 def test_no_judge_is_extracted_from_a_ref_without_one(repo, tmp_path_factory):
     assert not extract_judge(repo.path, "HEAD", str(tmp_path_factory.mktemp("judge")))
+
+
+def test_section_reads_one_markdown_section():
+    text = "## Summary\n\nOne.\n\n## Why\n\nTwo.\n### Sub\nMore.\n"
+    assert section(text, "Summary") == "One."
+    assert section(text, "Why") == "Two.\n### Sub\nMore."
+    assert section(text, "Missing") == ""
+
+
+def pr_repo(repo: Repo) -> str:
+    repo.run("switch", "-q", "-c", "feat/x")
+    repo.commit("feat(a): add a", {"a.py": "1\n"})
+    repo.commit("fix(a): handle b\n\nReview finding (M1 round 1, major).", {"a.py": "2\n"})
+    repo.write(
+        {
+            "design/s/summary.md": "## Summary\n\nAdds a.\n\n## Why\n\nBecause.\n\n## Not done\n\nC.\n",
+            "design/s/build-log.md": "## Plan deviations\n\n| Step | Deviation |\n|---|---|\n| 1 | x |\n",
+            "design/s/review-log.md": "## M1 · Round 1\n\n**Reviewed**: `a..b` · **Verdict**: ITERATE\n",
+        }
+    )
+    return repo.run("rev-parse", "HEAD").strip()
+
+
+def test_the_pr_body_has_every_section_and_only_real_commits(repo):
+    head = pr_repo(repo)
+    report = Report(mode="gate", sha=head, base="master", merge_base="0" * 40)
+    report.checks = [CheckResult("test", "pass", 1.0, "ok")]
+    report.findings = [Finding("guardrails", HUMAN, "guardrail file changed", "ruff.toml")]
+    body = build(repo.path, "s", report, "master")
+    for heading in ("## Summary", "## Why", "## Commits (2", "## Verification", "## Review rounds", "## Deviations"):
+        assert heading in body
+    assert "_Not written" not in body and "Adds a." in body and "| 1 | x |" in body
+    assert "### Needs a human" in body and "ruff.toml" in body
+    assert "*(review fix)*" in body
+    hashes = set(re.findall(r"`([0-9a-f]{7})`", body))
+    known = {c.short for c in gitutil.commits(repo.path, "master", "HEAD")}
+    assert hashes and hashes <= known
+
+
+def test_a_stale_or_missing_report_is_said_plainly(repo):
+    pr_repo(repo)
+    stale = Report(mode="gate", sha="f" * 40, base="master")
+    assert "verdict: stale" in build(repo.path, "s", stale, "master")
+    assert "verdict: not run" in build(repo.path, "s", None, "master")
 
 
 if __name__ == "__main__":
