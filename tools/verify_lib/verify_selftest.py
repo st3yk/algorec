@@ -317,8 +317,15 @@ def test_deselecting_tests_through_a_rule_attribute_asks_a_human(repo):
 
 
 def test_an_early_exit_above_the_footer_asks_a_human(repo):
-    early = TEST_FILE + '\nif __name__ == "__main__":\n    raise SystemExit(0)\n'
+    footer = 'if __name__ == "__main__":\n    raise SystemExit(pytest.main([__file__, "-q"]))\n'
+    early = TEST_FILE + '\nif __name__ == "__main__":\n    raise SystemExit(0)\n\n\n' + footer
     assert any("module-level code added" in m for m in messages(guard(repo, {"tests/test_x.py": early})))
+
+
+def test_a_new_test_file_with_the_standard_footer_is_not_flagged(repo):
+    footer = 'if __name__ == "__main__":\n    raise SystemExit(pytest.main([__file__, "-q"]))\n'
+    new = "import pytest\n\n\ndef test_n():\n    assert True\n\n\n" + footer
+    assert guard(repo, {"tests/test_new.py": new}) == []
 
 
 def test_a_skip_alias_asks_a_human(repo):

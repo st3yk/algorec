@@ -93,8 +93,10 @@ def _module_code(text: str) -> Counter[str]:
     except SyntaxError:
         return Counter()
     out: Counter[str] = Counter()
-    for node in tree.body:
+    for i, node in enumerate(tree.body):
         if isinstance(node, ast.Import | ast.ImportFrom | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            continue
+        if i == len(tree.body) - 1 and _is_main_guard(node):
             continue
         source = ast.unparse(node)
         if isinstance(node, ast.Assign | ast.AnnAssign) and not re.search(r"\b(pytest|mark|skip|xfail)\b", source):
@@ -103,6 +105,18 @@ def _module_code(text: str) -> Counter[str]:
             continue
         out[source] += 1
     return out
+
+
+def _is_main_guard(node: ast.stmt) -> bool:
+    return (
+        isinstance(node, ast.If)
+        and ast.unparse(node.test) == "__name__ == '__main__'"
+        and len(node.body) == 1
+        and isinstance(node.body[0], ast.Raise)
+        and node.body[0].exc is not None
+        and ast.unparse(node.body[0].exc).startswith("SystemExit(")
+        and not node.orelse
+    )
 
 
 def _loads(text: str) -> Counter[str]:
