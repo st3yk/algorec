@@ -280,8 +280,11 @@ It takes a finished plan in `design/<slug>/plan.md` and:
    --autonomous" --permission-mode acceptEdits` in the background, logging to
    `~/.cache/steerrec-agent/<slug>.log`.
 
-`--dry-run` prints every command instead of running it. The script refuses an
-existing branch or worktree.
+`--dry-run` prints every command instead of running it. The script refuses a
+bad slug or arguments (exit 64), a missing plan (66), and a branch that already
+exists locally, on `origin`, or as a worktree (73). With the git hooks
+enabled, the push runs the gate, so the draft PR appears after one gate run
+rather than at once. Its behavior is tested by `//tools/agent:selftest`.
 
 ## Lint and format
 

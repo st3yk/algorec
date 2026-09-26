@@ -31,6 +31,7 @@ filegroup(
         "//steerrec:all_files",
         "//tests:all_files",
         "//tools:all_files",
+        "//tools/agent:all_files",
         "//tools/conventions:all_files",
         "//tools/github:all_files",
         "//tools/hooks:all_files",

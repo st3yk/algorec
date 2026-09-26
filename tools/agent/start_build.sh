@@ -16,7 +16,11 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) dry_run=1 ;;
     --gate) gate=1 ;;
-    --base) base="$2"; shift ;;
+    --base)
+      [[ $# -ge 2 && "$2" != -* ]] || usage
+      base="$2"
+      shift
+      ;;
     *) usage ;;
   esac
   shift
@@ -44,6 +48,10 @@ run() {
 
 git -C "$repo" show-ref --verify --quiet "refs/heads/$branch" && { echo "branch $branch already exists" >&2; exit 73; }
 [[ -e "$wt" ]] && { echo "worktree $wt already exists" >&2; exit 73; }
+if git -C "$repo" ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+  echo "branch $branch already exists on origin" >&2
+  exit 73
+fi
 
 run git -C "$repo" fetch --quiet origin
 run git -C "$repo" worktree add --quiet -b "$branch" "$wt" "$base"
@@ -63,7 +71,7 @@ fi
 
 if [[ "$gate" == 1 ]]; then
   echo "--gate: stopping after the plan-only draft PR. Start the build with:"
-  echo "  (cd $wt && claude -p '/algo-build-loop design/$slug/plan.md --autonomous')"
+  echo "  (cd $wt && claude -p '/algo-build-loop design/$slug/plan.md --autonomous' --permission-mode acceptEdits)"
   exit 0
 fi
 
