@@ -1,0 +1,127 @@
+name: gatekeeper
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: gatekeeper-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      code: ${{ steps.verify.outputs.code }}
+      kind: ${{ steps.verify.outputs.kind }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+          cache-save: false
+
+      - name: Run the base's judge
+        id: verify
+        env:
+          BASE: origin/${{ github.event.pull_request.base.ref }}
+        run: |
+          set +e
+          git fetch --quiet origin "${BASE#origin/}"
+          mb="$(git merge-base "$BASE" HEAD)"
+          judge="$RUNNER_TEMP/judge"
+          mkdir -p "$judge"
+          if ! git cat-file -e "$mb:tools/verify_lib/verify.py" 2>/dev/null; then
+            echo "code=skip" >> "$GITHUB_OUTPUT"
+            echo "**\`tools/verify\`: skipped.** The merge-base has no judge; this PR is reviewed by hand." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          paths=""
+          for p in tools/__init__.py tools/verify_lib tools/proto_compat/__init__.py tools/proto_compat/listing.py; do
+            if [ -n "$(git ls-tree --name-only "$mb" -- "$p")" ]; then paths="$paths $p"; fi
+          done
+          git archive "$mb" $paths | tar -x -C "$judge"
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$judge" python3 -m tools.verify_lib.verify \
+            --repo "$GITHUB_WORKSPACE" --base "$BASE"
+          code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          sha="$(git rev-parse HEAD)"
+          sha="${sha:0:12}"
+          report=".verify/reports/$sha.json"
+          if [ -f "$report" ]; then
+            kind="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("human_kind", ""))' "$report")"
+            echo "kind=$kind" >> "$GITHUB_OUTPUT"
+            cat ".verify/reports/$sha.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: verify-report
+          path: .verify/reports/
+          if-no-files-found: warn
+
+      - name: Verdict
+        env:
+          CODE: ${{ steps.verify.outputs.code }}
+          KIND: ${{ steps.verify.outputs.kind }}
+        run: |
+          case "$CODE" in
+            0) echo "PASS" ;;
+            skip) echo "::notice::tools/verify skipped: the base has no judge yet (this change introduces it)." ;;
+            1) echo "::error::tools/verify: FAIL"; exit 1 ;;
+            2) echo "::error::tools/verify: NEEDS_HUMAN ($KIND). A human must review the findings in the job summary."; exit 2 ;;
+            *) echo "::error::tools/verify: ERROR (exit $CODE)"; exit 3 ;;
+          esac
+
+  enforce:
+    needs: verify
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Keep the PR a draft unless it's ready
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          CODE: ${{ needs.verify.outputs.code }}
+          KIND: ${{ needs.verify.outputs.kind }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          case "$CODE" in
+            0)
+              gh pr edit "$PR" --repo "$REPO" --remove-label needs-human >/dev/null 2>&1 || true
+              ;;
+            skip)
+              ;;
+            2)
+              if [ "$KIND" = soft ]; then
+                gh label create needs-human --repo "$REPO" --color FBCA04 --description "tools/verify: soft NEEDS_HUMAN" >/dev/null 2>&1 || true
+                gh pr edit "$PR" --repo "$REPO" --add-label needs-human
+              else
+                gh pr ready "$PR" --repo "$REPO" --undo >/dev/null 2>&1 || true
+                gh pr comment "$PR" --repo "$REPO" --body "tools/verify says NEEDS_HUMAN (${KIND:-hard}): the judge can't vouch for this change, so the PR is back to draft. See $RUN."
+              fi
+              ;;
+            *)
+              gh pr ready "$PR" --repo "$REPO" --undo >/dev/null 2>&1 || true
+              gh pr comment "$PR" --repo "$REPO" --body "tools/verify didn't pass (exit ${CODE:-none}), so the PR is back to draft until it does. See $RUN."
+              ;;
+          esac

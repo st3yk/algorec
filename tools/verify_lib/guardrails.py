@@ -77,6 +77,7 @@ class TestFn:
     decorators: list[str] = field(default_factory=list)
     skips: int = 0
     returns: int = 0
+    body: str = ""
 
 
 def _module_assignments(text: str) -> Counter[str]:
@@ -99,12 +100,26 @@ def _module_code(text: str) -> Counter[str]:
         if i == len(tree.body) - 1 and _is_main_guard(node):
             continue
         source = ast.unparse(node)
-        if isinstance(node, ast.Assign | ast.AnnAssign) and not re.search(r"\b(pytest|mark|skip|xfail)\b", source):
+        if (
+            isinstance(node, ast.Assign | ast.AnnAssign)
+            and not re.search(r"\b(pytest|mark|skip|xfail)\b", source)
+            and not _rebinds_a_test(node)
+        ):
             continue
         if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
             continue
         out[source] += 1
     return out
+
+
+def _rebinds_a_test(node: ast.Assign | ast.AnnAssign) -> bool:
+    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+    for target in targets:
+        if not isinstance(target, ast.Name):
+            return True
+        if target.id.startswith(("test", "Test", "pytest")):
+            return True
+    return False
 
 
 def _is_main_guard(node: ast.stmt) -> bool:
@@ -148,6 +163,7 @@ def _test_functions(path: str, text: str) -> dict[str, TestFn]:
             fn.skips = sum(1 for d in node.decorator_list if _is_skip(d))
             fn.skips += sum(1 for inner in ast.walk(node) if isinstance(inner, ast.Call) and _is_skip(inner.func))
             fn.returns = sum(1 for inner in ast.walk(node) if isinstance(inner, ast.Return))
+            fn.body = ast.dump(ast.Module(body=node.body, type_ignores=[]))
             out[node.name] = fn
     return out
 
@@ -212,6 +228,7 @@ def check_guardrails(
             f"guardrail change: {', '.join(p.rsplit('/', 1)[-1] for p in paths[:6])}"
             + (f" and {len(paths) - 6} more" if len(paths) > 6 else ""),
             group,
+            hard=True,
         )
         for group, paths in sorted(groups.items())
     ]
@@ -254,20 +271,25 @@ def _check_tests(
             out.append(
                 Finding("guardrails", HUMAN, f"`{name}` gained a `return`, which can end it early", news[0].path)
             )
+        if sorted(fn.body for fn in olds) != sorted(fn.body for fn in news):
+            message = f"`{name}` changed; a human must confirm it still checks what it did"
+            out.append(Finding("guardrails", HUMAN, message, news[0].path))
     for name, news in sorted(head_fns.items()):
         if name not in base_fns and any(fn.skips for fn in news):
             out.append(Finding("guardrails", HUMAN, f"new test `{name}` is skipped or xfailed", news[0].path))
     for label, attrs in sorted(base_rules.items()):
         now = head_rules.get(label)
         if now is None:
-            out.append(Finding("guardrails", HUMAN, "py_test rule was removed", label))
+            out.append(Finding("guardrails", HUMAN, "py_test rule was removed", label, hard=True))
             continue
         if "manual" in now.get("tags", "") and "manual" not in attrs.get("tags", ""):
-            out.append(Finding("guardrails", HUMAN, "py_test rule is now tagged manual, so //... skips it", label))
+            out.append(
+                Finding("guardrails", HUMAN, "py_test rule is now tagged manual, so //... skips it", label, hard=True)
+            )
         attrs_changed = sorted(k for k in set(attrs) | set(now) if attrs.get(k) != now.get(k) and k != "tags")
         if attrs_changed:
             detail = "; ".join(f"{k}: `{attrs.get(k, '')[:60]}` -> `{now.get(k, '')[:60]}`" for k in attrs_changed[:3])
-            out.append(Finding("guardrails", HUMAN, f"py_test rule changed how it runs ({detail})", label))
+            out.append(Finding("guardrails", HUMAN, f"py_test rule changed how it runs ({detail})", label, hard=True))
     for path in sorted(p for p in relevant if is_test_file(p)):
         base_text, head_text = read_base(path), read_head(path)
         if head_text is None:
@@ -278,7 +300,7 @@ def _check_tests(
     for path in sorted(p for p in changed if p.endswith(("BUILD.bazel", "BUILD"))):
         base_text, head_text = read_base(path), read_head(path)
         if base_text is not None and head_text is not None and _loads(base_text) != _loads(head_text):
-            out.append(Finding("guardrails", HUMAN, "a BUILD file changed which rules it loads", path))
+            out.append(Finding("guardrails", HUMAN, "a BUILD file changed which rules it loads", path, hard=True))
     base_all = sum(base_assigns.values(), Counter())
     head_all = sum(head_assigns.values(), Counter())
     for text in sorted((base_all - head_all).elements())[:5]:

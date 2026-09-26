@@ -47,8 +47,14 @@ def junit(*cases: str) -> str:
     return f'<?xml version="1.0"?><testsuites><testsuite name="pytest">{body}</testsuite></testsuites>'
 
 
-def case(name: str, child: str = "") -> str:
-    return f'<testcase classname="tests.test_x" name="{name}">{child}</testcase>'
+LINES = {"test_one": 1, "test_two": 5}
+
+
+def case(name: str, child: str = "", where: str | None = None) -> str:
+    line = LINES[name.split("[")[0]]
+    at = f"tests/test_x.py:{line}" if where is None else where
+    props = f'<properties><property name="defined_at" value="{at}" /></properties>' if at else ""
+    return f'<testcase classname="tests.test_x" name="{name}">{props}{child}</testcase>'
 
 
 TAMPERED_ENTRY = """#!/usr/bin/env bash
@@ -215,11 +221,12 @@ def test_every_test_function_needs_a_passed_result(gate):
     [
         ((), "`test_one` never ran"),
         ((case("test_one"),), "`test_two` never ran"),
-        ((case("test_one"), case("test_two", "<skipped/>")), "`test_two` ran but never passed (skipped)"),
-        ((case("test_one"), case("test_two[1]"), case("test_two[2]", "<skipped/>")), "`test_two` was skipped"),
+        ((case("test_one"), case("test_two", "<failure/>")), "`test_two` ran but never passed (failure)"),
+        ((case("test_one"), case("test_two", where="")), "`test_two` ran without a definition record"),
+        ((case("test_one"), case("test_two", where="tests/test_x.py:9")), "came from tests/test_x.py:9"),
     ],
 )
-def test_missing_or_skipped_results_fail(gate, cases, fragment):
+def test_missing_substituted_or_failed_results_fail(gate, cases, fragment):
     gate.write("tests/test_x.py", TEST_FILE)
     gate.commit("test: add tests")
     with open(gate.xml, "w") as f:
@@ -227,6 +234,36 @@ def test_missing_or_skipped_results_fail(gate, cases, fragment):
     gate.env["FAKE_TEST_XML"] = gate.xml
     code, report = gate.verify("--base", "master")
     assert code == 1 and fragment in json.dumps(report)
+
+
+def test_a_test_rebound_to_a_lambda_fails_evidence(gate):
+    gate.write("tests/test_x.py", TEST_FILE + '\nglobals()["test_two"] = lambda: None\n')
+    gate.commit("test: add tests")
+    with open(gate.xml, "w") as f:
+        f.write(junit(case("test_one"), case("test_two", where="tests/test_x.py:8")))
+    gate.env["FAKE_TEST_XML"] = gate.xml
+    code, report = gate.verify("--base", "master")
+    assert code == 1 and "came from tests/test_x.py:8, not the def at tests/test_x.py:5" in json.dumps(report)
+
+
+def test_a_new_skip_asks_a_human_and_a_skip_from_the_base_is_accepted(gate):
+    gate.write("tests/test_x.py", TEST_FILE)
+    gate.commit("test: add tests")
+    with open(gate.xml, "w") as f:
+        f.write(junit(case("test_one"), case("test_two", "<skipped/>")))
+    gate.env["FAKE_TEST_XML"] = gate.xml
+    code, report = gate.verify("--base", "master")
+    assert code == 2 and "`test_two` is newly skipped" in json.dumps(report)
+    gate.git("switch", "-q", "master")
+    gate.write("tests/test_x.py", TEST_FILE.replace("def test_two", "@skip\ndef test_two"))
+    gate.commit("test: skip test_two")
+    gate.git("switch", "-q", "-c", "feat/y")
+    gate.write("docs/y.md", "y\n")
+    gate.commit("docs: add y")
+    with open(gate.xml, "w") as f:
+        f.write(junit(case("test_one"), case("test_two", "<skipped/>", where="tests/test_x.py:5")))
+    code, report = gate.verify("--base", "master")
+    assert code == 0, json.dumps(report)
 
 
 if __name__ == "__main__":

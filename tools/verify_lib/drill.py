@@ -160,7 +160,7 @@ FAULTS = [
             "\ndef drill_helper() -> int:\n    return 1\n\n\ndef compute_bounds(",
         ),
         "feat(targets): add a helper\n\nDocs-Unchanged: internal helper, nothing user-visible",
-        "NEEDS_HUMAN",
+        "NEEDS_HUMAN/soft",
     ),
     Fault(
         "proto field renumbered",
@@ -221,7 +221,40 @@ FAULTS = [
             "",
         ),
         "test(targets): trim a check",
-        "NEEDS_HUMAN",
+        "NEEDS_HUMAN/soft",
+    ),
+    Fault(
+        "neutral tests rebound to lambdas, plus the neutral-rows fault",
+        both(
+            NEUTRAL_ROWS_REMOVED,
+            replace(
+                "tests/test_assembler.py",
+                "\n\n" + TEST_FOOTER,
+                "\n\n"
+                + "".join(
+                    f'globals()["{name}"] = lambda *a, **k: None\n'
+                    for name in (
+                        "test_shortfall_page_is_never_below_neutral_minimal_case",
+                        "test_every_page_stays_on_the_slider_side_of_neutral",
+                        "test_ilp_matches_brute_force_on_small_pools",
+                    )
+                )
+                + "\n\n"
+                + TEST_FOOTER,
+            ),
+        ),
+        "fix(assembler): drop the neutral rows",
+        "FAIL",
+    ),
+    Fault(
+        "an assert hidden under if False",
+        replace(
+            "tests/test_targets.py",
+            "    assert exclusive_mass(it, EDUCATIONAL, pushed_up=(EDUCATIONAL,)) == pytest.approx(0.7)\n",
+            "    if False:\n        assert exclusive_mass(it, EDUCATIONAL, pushed_up=(EDUCATIONAL,)) == pytest.approx(0.7)\n",
+        ),
+        "test(targets): park a check",
+        "NEEDS_HUMAN/soft",
     ),
     Fault(
         "commit checker loosened on the branch",
@@ -238,7 +271,7 @@ FAULTS = [
         "CI workflow edited",
         replace(".github/workflows/verify.yml", "    timeout-minutes: 30\n", "    timeout-minutes: 5\n"),
         "ci: shorten the timeout",
-        "NEEDS_HUMAN",
+        "NEEDS_HUMAN/hard",
     ),
     Fault(
         "new package no check sees",
@@ -306,6 +339,11 @@ def main(argv: list[str] | None = None) -> int:
             [os.path.join(clone, "tools", "verify"), "--base", "drill-base"], cwd=clone, capture_output=True, env=env
         )
         verdict = EXIT.get(result.returncode, f"exit {result.returncode}")
+        sha = git(clone, "rev-parse", "HEAD").strip()
+        report = os.path.join(clone, ".verify", "reports", f"{sha[:12]}.json")
+        if verdict == "NEEDS_HUMAN" and os.path.exists(report):
+            with open(report, encoding="utf-8") as f:
+                verdict += "/" + (json.load(f).get("human_kind") or "?")
         ok = verdict == fault.verdict and (hook_code is None or hook_code == fault.hook_rejects)
         failures += not ok
         hook = "" if hook_code is None else f" hook {fault.hook}: exit {hook_code}"

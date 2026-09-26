@@ -12,7 +12,7 @@ from tools.verify_lib import gitutil
 from tools.verify_lib.commits import check_commits
 from tools.verify_lib.coverage import check_coverage, source_paths
 from tools.verify_lib.docs_changed import check_docs, docs_for, load_map
-from tools.verify_lib.evidence import required_tests
+from tools.verify_lib.evidence import Expected, required_tests
 from tools.verify_lib.findings import FAIL, HUMAN, Finding
 from tools.verify_lib.gitutil import Commit
 from tools.verify_lib.guardrails import check_guardrails, is_guardrail
@@ -211,14 +211,16 @@ def guard(repo: Repo, head_files: Mapping[str, str | None], base_files: Mapping[
     )
 
 
-def test_adding_tests_and_asserts_is_not_flagged(repo):
+def test_adding_a_new_test_is_not_flagged(repo):
     more = TEST_FILE + "\n\ndef test_c():\n    assert True\n"
-    assert (
-        guard(
-            repo, {"tests/test_x.py": more.replace("    assert seed < 100\n", "    assert seed < 100\n    assert 1\n")}
-        )
-        == []
-    )
+    assert guard(repo, {"tests/test_x.py": more}) == []
+
+
+def test_adding_an_assert_to_an_existing_test_still_asks_a_human(repo):
+    head = TEST_FILE.replace("    assert seed < 100\n", "    assert seed < 100\n    assert 1\n")
+    assert [m for m in messages(guard(repo, {"tests/test_x.py": head}))] == [
+        "`test_a` changed; a human must confirm it still checks what it did"
+    ]
 
 
 def test_reformatting_an_assert_is_not_flagged(repo):
@@ -328,6 +330,45 @@ def test_a_new_test_file_with_the_standard_footer_is_not_flagged(repo):
     assert guard(repo, {"tests/test_new.py": new}) == []
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        'globals()["test_a"] = lambda: None',
+        "test_b = lambda: None",
+        "vars()['test_b'] = print",
+    ],
+)
+def test_rebinding_a_test_at_module_level_asks_a_human(repo, line):
+    head = TEST_FILE + "\n" + line + "\n"
+    assert any("module-level code added" in m for m in messages(guard(repo, {"tests/test_x.py": head})))
+
+
+def test_a_plain_module_constant_is_not_flagged(repo):
+    assert guard(repo, {"tests/test_x.py": "LIMIT = 3\n" + TEST_FILE}) == []
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda t: t.replace("    assert seed >= 0\n", "    if False:\n        assert seed >= 0\n"),
+        lambda t: t.replace(
+            "    assert seed >= 0\n", "    try:\n        assert seed >= 0\n    except AssertionError:\n        pass\n"
+        ),
+        lambda t: t.replace("    assert seed >= 0\n", "    def unused():\n        assert seed >= 0\n"),
+        lambda t: t.replace('        int("x")', '        int("7")'),
+    ],
+)
+def test_any_change_to_an_existing_test_body_asks_a_human(repo, change):
+    head = change(TEST_FILE)
+    assert head != TEST_FILE
+    assert any("still checks what it did" in m for m in messages(guard(repo, {"tests/test_x.py": head})))
+
+
+def test_reformatting_a_test_body_is_not_a_change(repo):
+    reformatted = TEST_FILE.replace("    assert seed < 100\n", "    assert (\n        seed\n        < 100\n    )\n")
+    assert guard(repo, {"tests/test_x.py": reformatted}) == []
+
+
 def test_a_skip_alias_asks_a_human(repo):
     head = "_off = pytest.mark.skip\n" + TEST_FILE.replace("def test_b():", "@_off\ndef test_b():")
     assert any("module-level code added" in m for m in messages(guard(repo, {"tests/test_x.py": head})))
@@ -348,7 +389,17 @@ def test_required_tests_cover_module_and_class_tests():
         "def test_a():\n    pass\n\n\ndef helper():\n    pass\n\n\nclass TestK:\n    def test_b(self):\n        pass\n"
     )
     files = {"tests/test_x.py": text, "tests/conftest.py": "def test_no():\n    pass\n", "steerrec/a.py": text}
-    assert required_tests(list(files), files.get) == {("tests.test_x", "test_a"), ("tests.test_x.TestK", "test_b")}
+    assert set(required_tests(list(files), files.get)) == {("tests.test_x", "test_a"), ("tests.test_x.TestK", "test_b")}
+
+
+def test_required_tests_record_the_first_decorator_line_and_base_skips():
+    head = (
+        "import pytest\n\n\n@pytest.mark.parametrize('x', [1])\ndef test_a(x):\n    pass\n\n\ndef test_b():\n    pass\n"
+    )
+    base = "import pytest\n\n\n@pytest.mark.skip\ndef test_a():\n    pass\n"
+    expected = required_tests(["tests/test_x.py"], {"tests/test_x.py": head}.get, {"tests/test_x.py": base}.get)
+    assert expected[("tests.test_x", "test_a")] == Expected("tests/test_x.py:4", True)
+    assert expected[("tests.test_x", "test_b")] == Expected("tests/test_x.py:9", False)
 
 
 GOLDEN = "message p.M\nfield p.M 1 a optional TYPE_STRING json=a\n"
@@ -430,6 +481,37 @@ def test_verdicts(statuses, levels, verdict):
     checks = [CheckResult(f"c{i}", s) for i, s in enumerate(statuses)]
     findings = [Finding("x", level, "m") for level in levels]
     assert verdict_of(checks, findings) == verdict
+
+
+@pytest.mark.parametrize(
+    "findings, checks, kind",
+    [
+        ([Finding("docs", HUMAN, "trailer")], ["pass"], "soft"),
+        ([Finding("guardrails", HUMAN, "test changed")], ["pass"], "soft"),
+        ([Finding("guardrails", HUMAN, "guardrail change", hard=True)], ["pass"], "hard"),
+        ([Finding("docs", HUMAN, "trailer")], ["needs_human"], "soft"),
+        ([Finding("docs", HUMAN, "trailer")], ["base-guardrails:needs_human"], "hard"),
+        ([], ["pass"], ""),
+        ([Finding("x", FAIL, "bad"), Finding("guardrails", HUMAN, "g", hard=True)], ["pass"], ""),
+    ],
+)
+def test_needs_human_is_soft_unless_a_hard_finding_or_check_says_otherwise(findings, checks, kind):
+    report = Report(mode="gate", sha="a" * 40)
+    report.checks = [CheckResult(*c.split(":")) if ":" in c else CheckResult(f"c{i}", c) for i, c in enumerate(checks)]
+    report.findings = findings
+    assert report.human_kind == kind
+    assert report.to_dict()["human_kind"] == kind
+
+
+def test_guardrail_file_and_rule_changes_are_hard(repo):
+    manual = BUILD.replace(")\n", '    tags = ["manual"],\n)\n')
+    findings = guard(
+        repo, {"tests/BUILD.bazel": manual, "ruff.toml": "x\n", "tests/test_x.py": TEST_FILE + "\nX = 1\n"}
+    )
+    assert {f.message.split(":")[0] for f in findings if f.hard} == {
+        "guardrail change",
+        "py_test rule is now tagged manual, so //... skips it",
+    }
 
 
 def test_the_report_names_the_sha_and_how_to_reproduce():

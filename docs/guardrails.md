@@ -21,6 +21,18 @@ The exit code is the verdict:
 | 0 | `PASS` | Every check passed at this commit, and nothing needs a human. |
 | 1 | `FAIL` | At least one check failed. |
 | 2 | `NEEDS_HUMAN` | Every check passed, but the branch changes a guardrail, weakens a test, uses a `Docs-Unchanged:` escape, or was judged by its own checks. Only a human can accept it. |
+
+NEEDS_HUMAN comes in two kinds, reported as `human_kind` in the JSON report
+and after the verdict in text and Markdown:
+
+| Kind | When | What it means for a PR |
+|---|---|---|
+| `soft` | Only findings where the change is probably fine and a human should look: an edited existing test, a removed or renamed test, a new skip, module-level code in a test file, a `Docs-Unchanged:` trailer, lines removed from the golden. | The PR may be opened ready for review, labelled `needs-human`. |
+| `hard` | Any finding where the judge can't vouch for the change: a guardrail file changed, a `py_test` rule removed, tagged `manual` or changed in how it runs, a BUILD file's `load()` lines changed, the judge isn't the merge-base's copy, or the tests fail under the base's guardrails. | No PR. A human applies the change. |
+
+The kind comes from the findings: the `guardrails` and `docs` checks take their
+NEEDS_HUMAN status from their findings, so a soft finding keeps them soft. The
+only check that is hard in itself is `base-guardrails`.
 | 3 | `ERROR` | The judge couldn't run: uncommitted changes, an unknown base, or Bazel crashed. Never read it as PASS. |
 
 Each run writes `.verify/reports/<sha>.json` and `.md` (ignored by git). The
@@ -98,11 +110,20 @@ Bazel setup. It narrows what a branch can fake, but it can't rule it out:
 - **Pinned Bazel.** The judge runs Bazel with `BAZELISK_SKIP_WRAPPER=1`, so a
   `tools/bazel` wrapper is ignored, and with the merge-base's `.bazelversion`.
 - **Runtime evidence.** Every test function in the head's test files must have
-  a passed JUnit result from this run (the `evidence` check). The root
-  `conftest.py` makes pytest write those results where Bazel asks, and every
-  pytest target lists it in `data`. Test logs are deleted before the run, so
-  old results can't stand in. A test that exits early, is skipped by any
-  spelling, or never runs fails the gate.
+  a passed JUnit result from this run (the `evidence` check), and that result
+  must come from that very `def`. The root `conftest.py` makes pytest write
+  the results where Bazel asks, and records each test's code location
+  (`defined_at`: file and first line, which for a decorated function is its
+  first decorator); every pytest target lists it in `data`. Test logs are
+  deleted before the run, so old results can't stand in.
+  - A test that never runs, exits early, or fails: FAIL.
+  - A result from somewhere else, such as a module-level
+    `globals()["test_x"] = lambda: None` that replaced the real test: FAIL.
+  - A result with no `defined_at`: FAIL, with a hint that the target is
+    probably missing `//:conftest.py` in its `data`.
+  - A test that is skipped (or xfail) in every run: accepted when the skip is
+    already in the merge-base's copy of the test or file, and NEEDS_HUMAN when
+    it is new.
 - **Flagged setup files.** Changes to `tools/bazel`, `.bazelversion`,
   `.bazeliskrc`, `MODULE.bazel`, any `.bzl` file, any `conftest.py`, or the
   `load()` lines of an existing BUILD file are NEEDS_HUMAN.
@@ -136,11 +157,13 @@ repository is marked "not a commit here".
 |---|---|---|
 | `commits` | A subject that isn't `type(scope): summary` (git's own `Revert "type: …"` subject is accepted) (types: feat, fix, test, refactor, build, chore, docs, perf, style, ci, revert), starts with a capital, or is over 72 characters; a WIP or `fixup!` commit; a merge commit; a lock-file change mixed with other files. | |
 | `docs` | A `feat`, `fix`, `perf` or `revert` commit that changes a source in `tools/verify_lib/docs_map.json` (Python modules, `.proto` files, `tools/verify`, `.claude/` and `.github/`; not BUILD files or the golden) without changing its docs page in the same commit. | The same, with a `Docs-Unchanged: <reason>` trailer. The reason goes into the report. |
-| `guardrails` | The contract golden breaks against the base's golden, or was deleted. | A guardrail file changed (`tools/verify`, `tools/pr_body`, `tools/verify_drill`, `tools/setup.sh`, `tools/github/`, `tools/verify_lib/`, `tools/conventions/`, `tools/lint/`, `tools/proto_compat/`, `tools/hooks/`, `tools/githooks/`, `tools/agent/`, any `conftest.py`, `tools/bazel`, `.bazelversion`, `.bazeliskrc`, `MODULE.bazel`, any `.bzl` file, `ruff.toml`, `mypy.ini`, `pytest.ini`, `.bazelrc`, `.claude/settings.json`, `.github/`, `CODEOWNERS`). A test function that gains a `return`. Module-level code added to a test file other than imports, definitions, plain assignments and the file's final `if __name__ == "__main__": raise SystemExit(...)` footer (an `if` or `raise` anywhere else, or an assignment that mentions `pytest`, `mark`, `skip` or `xfail`). A change to the `load()` lines of an existing BUILD file. In test files (everything under `tests/`, `conftest.py`, `test_*.py`, `*_test.py`, `*_selftest.py`): a function removed or renamed (test or helper); an `assert`, `pytest.raises` or `pytest.approx` removed or changed in any function; a decorator such as `parametrize` removed or changed; a skip or xfail added (also through `from pytest import mark`); a module-level assignment removed or changed, such as a tolerance constant; a module-wide `pytestmark` added. In BUILD files: a `py_test` rule removed, tagged `manual`, or changed in how it runs (`env`, `args`, `main`, `srcs`, …). A line removed from the golden. |
+| `guardrails` | The contract golden breaks against the base's golden, or was deleted. | A guardrail file changed (`tools/verify`, `tools/pr_body`, `tools/verify_drill`, `tools/setup.sh`, `tools/github/`, `tools/verify_lib/`, `tools/conventions/`, `tools/lint/`, `tools/proto_compat/`, `tools/hooks/`, `tools/githooks/`, `tools/agent/`, any `conftest.py`, `tools/bazel`, `.bazelversion`, `.bazeliskrc`, `MODULE.bazel`, any `.bzl` file, `ruff.toml`, `mypy.ini`, `pytest.ini`, `.bazelrc`, `.claude/settings.json`, `.github/`, `CODEOWNERS`). A test function that gains a `return`. Module-level code added to a test file other than imports, definitions, plain assignments and the file's final `if __name__ == "__main__": raise SystemExit(...)` footer (an `if` or `raise` anywhere else, an assignment that mentions `pytest`, `mark`, `skip` or `xfail`, or one whose target isn't a plain name or whose name starts with `test`, `Test` or `pytest`, which could rebind a test). A change to the `load()` lines of an existing BUILD file. In test files (everything under `tests/`, `conftest.py`, `test_*.py`, `*_test.py`, `*_selftest.py`): **any change to the body of an existing function** (test or helper), compared as an AST so reformatting doesn't count, which covers an assert moved into `if False:`, `try/except AssertionError` or a dead nested `def`; a function removed or renamed (test or helper); an `assert`, `pytest.raises` or `pytest.approx` removed or changed in any function; a decorator such as `parametrize` removed or changed; a skip or xfail added (also through `from pytest import mark`; the `evidence` check then also reports it as newly skipped); a module-level assignment removed or changed, such as a tolerance constant; a module-wide `pytestmark` added. In BUILD files: a `py_test` rule removed, tagged `manual`, or changed in how it runs (`env`, `args`, `main`, `srcs`, …). A line removed from the golden. |
 
-Functions are compared by name across all test files, and asserts by their
-normalized source, so moving a test or reformatting an assert isn't a
-finding. Renames are compared as a delete plus an add (`--no-renames`), so a
+Functions are compared by name across all test files, and their bodies and
+asserts by their AST, so moving a test or reformatting it isn't a finding,
+while any edit to what an existing test does is. That includes adding an
+assert: an "additive only" exemption would also let through an inserted line
+that stubs out the code under test. Renames are compared as a delete plus an add (`--no-renames`), so a
 renamed test file keeps its protection. Skips are found in decorators and calls, not in strings. Guardrail
 file changes are reported once per area (for example `tools/verify_lib/`). `style`, `refactor`, `test`, `build`, `chore`, `docs` and `ci`
 commits claim no behavior change, so `docs` doesn't apply to them; the
@@ -151,37 +174,44 @@ only the standard library, and ruff checks it with `target-version = py310`.
 Its rules are tested by `//tools/verify_lib:selftest` on scratch git
 repositories.
 
-## On GitHub: the `verify` workflow
+## On GitHub: the gatekeeper and the `verify` workflow
 
-`.github/workflows/verify.yml` runs the same judge on every pull request, every
-push to `master`, and on demand. It adds no checks of its own.
+Two workflows run the same judge. Neither adds checks of its own.
 
-1. It checks out the PR's head commit (not GitHub's merge commit) with full
-   history, and restores the Bazel caches with `bazel-contrib/setup-bazel`.
-2. It extracts `tools/verify_lib/` from the merge-base **itself**, in YAML,
-   and runs that copy, so a PR that edits `tools/verify` can't change the
-   judge. The base is the PR's base branch, the previous `master` commit on a
-   push, and the default branch on a manual run. When the merge-base has no
-   `tools/verify_lib/` (the PR that introduces the judge), there is no trusted
-   judge, so the job **skips** with a notice instead of letting the branch
-   judge itself: that PR is reviewed by hand, and every later PR is judged by
-   the merged copy.
-3. The Markdown report goes into the job summary, and the JSON and Markdown
-   reports are uploaded as the `verify-report` artifact.
-4. The check is green on `PASS`, and on the bootstrap skip above. `FAIL`,
-   `NEEDS_HUMAN` and `ERROR` are red; the error annotation says which.
+**`.github/workflows/gatekeeper.yml`** judges every pull request. It runs on
+`pull_request_target`, so GitHub always uses the **default branch's** copy of
+the workflow: a PR that edits it changes nothing until it's merged. It has two
+jobs, so that PR code never runs next to a write token:
 
-It has read-only permissions and uses no secrets, so pull requests from forks
-are safe to run. Third-party actions are pinned by commit SHA.
+1. **`verify`** (read-only: `contents: read`, no persisted credentials, no
+   cache saves) checks out the PR's head commit with full history, extracts
+   `tools/verify_lib/` from the merge-base, and runs that copy. The Markdown
+   report goes into the job summary, and the reports are uploaded as the
+   `verify-report` artifact. This job is the required `verify` check: green on
+   `PASS` (and on the bootstrap skip below), red on `FAIL`, `NEEDS_HUMAN` and
+   `ERROR`.
+2. **`enforce`** (`pull-requests: write`, `issues: write`) never checks out or
+   runs the PR's code. It reads the verdict and kind from job 1 and:
+   - `PASS`: removes the `needs-human` label;
+   - soft `NEEDS_HUMAN`: adds the `needs-human` label, and the PR stays ready
+     for a human to review;
+   - hard `NEEDS_HUMAN`, `FAIL`, `ERROR`, or no verdict: turns the PR back
+     into a draft and comments with a link to the run.
 
-**Its limit:** on `pull_request`, GitHub runs the workflow file **from the PR's
-branch**. A PR that edits `verify.yml` can make the `verify` check green
-without running the judge. The judge flags a workflow edit as NEEDS_HUMAN,
-but only if the workflow still runs it. CODEOWNERS only labels such PRs;
-it isn't enforced, because the ruleset requires no reviews. So until the
-workflow moves to `pull_request_target` (the base's YAML, checking out the
-head SHA read-only), **a green check on a PR that touches `.github/` is not
-evidence**: read the diff. That's acceptable while only the owner merges.
+So a PR on GitHub is only ever "ready" when the judge says so, however it was
+opened.
+
+When the merge-base has no `tools/verify_lib/` (the PR that introduces the
+judge), there is no trusted judge, so `verify` **skips** with a notice
+instead of letting the branch judge itself. That PR is reviewed by hand, and
+every later PR is judged by the merged copy.
+
+**`.github/workflows/verify.yml`** runs the same judge on every push to
+`master` (against the previous `master` commit) and on demand (against the
+default branch). It doesn't run on pull requests.
+
+Both use read-only access to the code, no secrets, and third-party actions
+pinned by commit SHA.
 
 ### Protecting `master`
 
@@ -216,20 +246,22 @@ differs from the table. Run it after every guardrail change.
 | Function docstring | PostToolUse hook | FAIL |
 | New test file without a `py_test` rule | conventions test | FAIL |
 | `feat` change to `targets.py` without its docs page | `docs` | FAIL |
-| The same, with a `Docs-Unchanged:` trailer | `docs` | NEEDS_HUMAN |
+| The same, with a `Docs-Unchanged:` trailer | `docs` | NEEDS_HUMAN (soft) |
 | Proto field renumbered | `//tools/proto_compat:test` | FAIL |
 | The ILP's "never below neutral" rows removed | "never below neutral" property tests | FAIL |
 | Shortfall silently dropped | bounds tests | FAIL |
 | Hand-edited lock-file hash | `//:requirements.test` | FAIL |
-| One assertion deleted from a test | `guardrails` | NEEDS_HUMAN |
+| One assertion deleted from a test | `guardrails` | NEEDS_HUMAN (soft) |
 | Commit checker loosened on the branch, subject `update stuff` | the base's judge (the branch's own commit-msg hook runs the loosened code) | FAIL |
 | Commit subject `update stuff` | commit-msg hook | FAIL |
-| CI workflow edited | `guardrails` | NEEDS_HUMAN |
+| CI workflow edited | `guardrails` | NEEDS_HUMAN (hard) |
 | New package that no check sees | `coverage` | FAIL |
 | Uncommitted change | clean-tree | ERROR |
 | Tests disabled by an early `SystemExit(0)` above the footer | `evidence` (and `guardrails`) | FAIL |
 | Tests skipped through an alias (`_off = pytest.mark.skip`) | `evidence` (and `guardrails`) | FAIL |
 | A `tools/bazel` wrapper that fakes a passing test run, plus the neutral-rows fault | pinned Bazel ignores the wrapper; property tests | FAIL |
+| The three neutral tests rebound to lambdas (`globals()[...] = lambda: None`), plus the neutral-rows fault | `evidence` (the result isn't from the `def`) and `guardrails` | FAIL |
+| An assert hidden under `if False:` | `guardrails` (the test's body changed) | NEEDS_HUMAN (soft) |
 
 Hook rows pass only with the hook's exact rejection code (exit 2 for
 PostToolUse, exit 1 for commit-msg). Not in the drill: agent permission
@@ -243,12 +275,12 @@ These give fast feedback. None of them decides the verdict; `tools/verify` does.
 | Hook | Runs | What it does |
 |---|---|---|
 | Claude Code `PostToolUse` (`Edit`, `Write`) | after each file edit | `tools/hooks/run post_edit`: ruff and the convention rules on that one file. Problems go straight back to the agent (exit 2). About 0.1 s: it calls the ruff binary directly, found once through `bazel info output_base` and cached in `.verify/ruff-path`. |
-| Claude Code `PreToolUse` (`Bash`) | before each shell command | `tools/hooks/run pre_bash`: rejects `git push` with a `+` or `:` refspec, `--force*`, `--mirror`, `--all`, `--delete`, `--prune`, a destination outside `feat/*`, or no explicit remote and branch (exit 2). |
+| Claude Code `PreToolUse` (`Bash`) | before each shell command | `tools/hooks/run pre_bash`: rejects every `git push` and `gh pr create`, `ready`, `edit`, `merge` and `reopen` (exit 2), and points to `tools/agent/open_pr.sh`, the only way agents push or open a PR. It finds `git` and `gh` by basename, sees through `command`, `env`, `exec`, `nohup`, `sudo` and `bash -c`, and ignores heredoc bodies. It is a speed bump: any other way of running git gets past it. |
 | Claude Code `Stop` | when the agent tries to finish | `tools/hooks/run on_stop`: runs `tools/verify --fast` unless the working tree is unchanged since its last run (a fingerprint of HEAD, the diff and untracked files). A green result is remembered in `.verify/last-fast-green`; a red one in `.verify/last-fast-red`, so an unchanged red tree is sent back with the cached failure instead of a 20 s re-run. A retry (`stop_hook_active`) is let through, so it can't loop. |
 | Claude Code `SessionStart` | at session start and resume | `tools/hooks/run session_start`: prints the branch, `git status`, and the "Current state" of every `design/*/build-log.md`. |
 | git `commit-msg` | each commit | The gate's `commits` rules on the message being written. |
 | git `pre-commit` | each commit | ruff and the convention rules on the staged Python files (it reads the working copy of each staged file). |
-| git `pre-push` | each push | Refuses a push to `master` or `main`, or of a commit other than HEAD, then runs the gate on HEAD. `PASS` and `NEEDS_HUMAN` push; `FAIL` and `ERROR` don't. |
+| git `pre-push` | each push | Refuses a push that didn't come through `tools/agent/open_pr.sh` (which sets `STEERREC_OPEN_PR=1` after the trusted gate), a push to `master` or `main`, and a push of a commit other than HEAD. |
 
 Enable the git hooks once per clone with `tools/setup.sh`
 (`core.hooksPath = tools/githooks`). The Claude Code hooks are in
@@ -262,9 +294,10 @@ library, and are tested by `//tools/hooks:selftest`.
 
 ## Agent permissions: a speed bump, not a boundary
 
-`.claude/settings.json` allows the commands the build loop needs and denies
-some that it never should (pushing to `master`, force pushes, `--no-verify`,
-`gh pr merge`, editing lock files, the golden and the guardrail files). The
+`.claude/settings.json` allows the commands the build loop needs, including
+`tools/agent/open_pr.sh`, and denies some that it never should: any direct
+`git push`, `gh pr create`, `ready`, `edit`, `reopen` and `merge`, `--no-verify`,
+editing lock files, the golden and the guardrail files. The
 Claude Code docs are explicit that Bash rules match the command as written,
 not the program: another spelling of the same command isn't matched. And
 `bazel test`, `bazel run`, `tools/verify` and the git hooks all execute code
@@ -272,6 +305,30 @@ from the branch, so an agent that wants to edit a denied file can do it
 through them. The rules stop honest mistakes and make the intended path the
 easy one. What actually protects `master` is the ruleset, and what actually
 judges a change is `tools/verify` run by the base's entry script or by CI.
+
+## Opening a PR: `tools/agent/open_pr.sh`
+
+```sh
+tools/agent/open_pr.sh <slug> [--base origin/master]
+```
+
+A PR reaches GitHub only when the change is ready. This script is the only way
+agents open or update one:
+
+1. It refuses anything but a clean `feat/*` branch (exit 64 or 65), and a base
+   without `tools/verify` (exit 3): with no trusted judge, a human opens the
+   PR.
+2. It runs the gate with the **base's** entry script
+   (`git show <base>:tools/verify | bash -s -- --base <base>`), never the
+   branch's, and reads the verdict and `human_kind` from the report.
+3. On `PASS`, it pushes the branch and opens a ready PR, or updates the open
+   one and marks it ready, with a `tools/pr_body` description. On a **soft**
+   NEEDS_HUMAN it does the same and adds the `needs-human` label.
+4. On a **hard** NEEDS_HUMAN, `FAIL` or `ERROR` it pushes nothing, opens
+   nothing, prints the report, and exits with the verdict's code.
+
+Its behavior is tested by `//tools/agent:open_pr_selftest` on scratch
+repositories with a stub `gh`.
 
 ## Starting a build: `tools/agent/start_build.sh`
 
@@ -283,17 +340,16 @@ It takes a finished plan in `design/<slug>/plan.md` and:
 
 1. creates the worktree `.claude/worktrees/<slug>` on a new branch
    `feat/<slug>` from `origin/master`;
-2. commits the design folder (`docs(design): add the <slug> plan`), pushes,
-   and opens a **draft** PR whose body comes from `tools/pr_body`;
+2. commits the design folder (`docs(design): add the <slug> plan`). It
+   pushes nothing: the branch reaches GitHub only when
+   `tools/agent/open_pr.sh` finds it ready;
 3. unless `--gate`, starts `claude -p "/algo-build-loop design/<slug>/plan.md
    --autonomous" --permission-mode acceptEdits` in the background, logging to
    `~/.cache/steerrec-agent/<slug>.log`.
 
 `--dry-run` prints every command instead of running it. The script refuses a
 bad slug or arguments (exit 64), a missing plan (66), and a branch that already
-exists locally, on `origin`, or as a worktree (73). With the git hooks
-enabled, the push runs the gate, so the draft PR appears after one gate run
-rather than at once. Its behavior is tested by `//tools/agent:selftest`.
+exists locally, on `origin`, or as a worktree (73). Its behavior is tested by `//tools/agent:selftest`.
 
 ## Lint and format
 

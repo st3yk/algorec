@@ -8,6 +8,7 @@ py_test(
     srcs = ["github_selftest.py"],
     data = [
         "ruleset.json",
+        "//:.github/workflows/gatekeeper.yml",
         "//:.github/workflows/verify.yml",
         "//:conftest.py",
         "//:pytest.ini",
