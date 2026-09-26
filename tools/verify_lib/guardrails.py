@@ -77,6 +77,7 @@ class TestFn:
     decorators: list[str] = field(default_factory=list)
     skips: int = 0
     returns: int = 0
+    body: str = ""
 
 
 def _module_assignments(text: str) -> Counter[str]:
@@ -162,6 +163,7 @@ def _test_functions(path: str, text: str) -> dict[str, TestFn]:
             fn.skips = sum(1 for d in node.decorator_list if _is_skip(d))
             fn.skips += sum(1 for inner in ast.walk(node) if isinstance(inner, ast.Call) and _is_skip(inner.func))
             fn.returns = sum(1 for inner in ast.walk(node) if isinstance(inner, ast.Return))
+            fn.body = ast.dump(ast.Module(body=node.body, type_ignores=[]))
             out[node.name] = fn
     return out
 
@@ -268,6 +270,9 @@ def _check_tests(
             out.append(
                 Finding("guardrails", HUMAN, f"`{name}` gained a `return`, which can end it early", news[0].path)
             )
+        if sorted(fn.body for fn in olds) != sorted(fn.body for fn in news):
+            message = f"`{name}` changed; a human must confirm it still checks what it did"
+            out.append(Finding("guardrails", HUMAN, message, news[0].path))
     for name, news in sorted(head_fns.items()):
         if name not in base_fns and any(fn.skips for fn in news):
             out.append(Finding("guardrails", HUMAN, f"new test `{name}` is skipped or xfailed", news[0].path))

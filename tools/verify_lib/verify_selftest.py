@@ -211,14 +211,16 @@ def guard(repo: Repo, head_files: Mapping[str, str | None], base_files: Mapping[
     )
 
 
-def test_adding_tests_and_asserts_is_not_flagged(repo):
+def test_adding_a_new_test_is_not_flagged(repo):
     more = TEST_FILE + "\n\ndef test_c():\n    assert True\n"
-    assert (
-        guard(
-            repo, {"tests/test_x.py": more.replace("    assert seed < 100\n", "    assert seed < 100\n    assert 1\n")}
-        )
-        == []
-    )
+    assert guard(repo, {"tests/test_x.py": more}) == []
+
+
+def test_adding_an_assert_to_an_existing_test_still_asks_a_human(repo):
+    head = TEST_FILE.replace("    assert seed < 100\n", "    assert seed < 100\n    assert 1\n")
+    assert [m for m in messages(guard(repo, {"tests/test_x.py": head}))] == [
+        "`test_a` changed; a human must confirm it still checks what it did"
+    ]
 
 
 def test_reformatting_an_assert_is_not_flagged(repo):
@@ -343,6 +345,28 @@ def test_rebinding_a_test_at_module_level_asks_a_human(repo, line):
 
 def test_a_plain_module_constant_is_not_flagged(repo):
     assert guard(repo, {"tests/test_x.py": "LIMIT = 3\n" + TEST_FILE}) == []
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda t: t.replace("    assert seed >= 0\n", "    if False:\n        assert seed >= 0\n"),
+        lambda t: t.replace(
+            "    assert seed >= 0\n", "    try:\n        assert seed >= 0\n    except AssertionError:\n        pass\n"
+        ),
+        lambda t: t.replace("    assert seed >= 0\n", "    def unused():\n        assert seed >= 0\n"),
+        lambda t: t.replace('        int("x")', '        int("7")'),
+    ],
+)
+def test_any_change_to_an_existing_test_body_asks_a_human(repo, change):
+    head = change(TEST_FILE)
+    assert head != TEST_FILE
+    assert any("still checks what it did" in m for m in messages(guard(repo, {"tests/test_x.py": head})))
+
+
+def test_reformatting_a_test_body_is_not_a_change(repo):
+    reformatted = TEST_FILE.replace("    assert seed < 100\n", "    assert (\n        seed\n        < 100\n    )\n")
+    assert guard(repo, {"tests/test_x.py": reformatted}) == []
 
 
 def test_a_skip_alias_asks_a_human(repo):
