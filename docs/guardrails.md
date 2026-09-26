@@ -55,8 +55,8 @@ aren't checked, and links to them don't resolve.
 ## Service contract compatibility
 
 `//tools/proto_compat:test` flattens the descriptor set of
-`//proto:recommender_proto` into one line per message, field, enum value and
-reservation. It compares that listing with `proto/recommender.fields.golden`.
+`//proto:recommender_proto` into one line per file syntax, service, RPC, message,
+oneof, field (with its JSON name and oneof), enum value and reservation. It compares that listing with `proto/recommender.fields.golden`.
 
 | Change | Result |
 |---|---|
@@ -65,6 +65,10 @@ reservation. It compares that listing with `proto/recommender.fields.golden`.
 | A reserved number or name reused, or a reservation dropped | Fails (breaking). |
 | A field's name, label or type changed | Fails (breaking). |
 | A message or enum removed | Fails (breaking). |
+| An RPC removed, or its request, response or streaming changed; a service removed | Fails (breaking). |
+| A field moved into or out of a oneof, or its JSON name changed | Fails (breaking). |
+| The file's syntax or edition changed | Fails (breaking). |
+| A new RPC | Compatible (golden update needed). |
 | A new field, value, message or reservation | Fails until the golden is updated: `bazel run //tools/proto_compat:update_golden`. |
 
 `update_golden` refuses to write when the change is breaking, so the golden can

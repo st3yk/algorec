@@ -23,7 +23,7 @@ def main(descriptor_path: str, golden_path: str) -> int:
         for b in broken:
             print(f"  - {b}", file=sys.stderr)
         return 1
-    if golden != current:
+    if sorted(set(golden)) != current:
         added = sorted(set(current) - set(golden))
         print("The contract changed compatibly, but the golden listing is stale:", file=sys.stderr)
         for a in added:

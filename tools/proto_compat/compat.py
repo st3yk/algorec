@@ -14,6 +14,13 @@ def describe(fds: descriptor_pb2.FileDescriptorSet) -> list[str]:
     lines: list[str] = []
     for f in fds.file:
         prefix = f.package
+        lines.append(f"syntax {f.name} {f.syntax or 'proto2'}{' edition=' + str(f.edition) if f.edition else ''}")
+        for svc in f.service:
+            name = f"{prefix}.{svc.name}"
+            lines.append(f"service {name}")
+            for m in svc.method:
+                streams = f"client_stream={m.client_streaming} server_stream={m.server_streaming}"
+                lines.append(f"rpc {name} {m.name} {m.input_type.lstrip('.')} {m.output_type.lstrip('.')} {streams}")
         for msg in f.message_type:
             _message(lines, prefix, msg)
         for enum in f.enum_type:
@@ -24,10 +31,15 @@ def describe(fds: descriptor_pb2.FileDescriptorSet) -> list[str]:
 def _message(lines: list[str], prefix: str, msg: descriptor_pb2.DescriptorProto) -> None:
     name = f"{prefix}.{msg.name}"
     lines.append(f"message {name}")
+    for oneof in msg.oneof_decl:
+        lines.append(f"oneof {name} {oneof.name}")
     for fd in msg.field:
         label = "proto3_optional" if fd.proto3_optional else LABELS[fd.label]
         kind = fd.type_name.lstrip(".") or descriptor_pb2.FieldDescriptorProto.Type.Name(fd.type)
-        lines.append(f"field {name} {fd.number} {fd.name} {label} {kind}")
+        extra = f" json={fd.json_name}" if fd.json_name else ""
+        if fd.HasField("oneof_index") and not fd.proto3_optional:
+            extra += f" oneof={msg.oneof_decl[fd.oneof_index].name}"
+        lines.append(f"field {name} {fd.number} {fd.name} {label} {kind}{extra}")
     for r in msg.reserved_range:
         lines.append(f"reserved {name} {r.start} {r.end - 1}")
     for rn in msg.reserved_name:
@@ -55,6 +67,7 @@ class Listing:
     members: dict[tuple[str, int], str] = field(default_factory=dict)
     reserved: dict[str, list[tuple[int, int]]] = field(default_factory=dict)
     reserved_names: dict[str, set[str]] = field(default_factory=dict)
+    named: dict[tuple[str, str], str] = field(default_factory=dict)
 
     def is_reserved(self, owner: str, number: int) -> bool:
         return any(lo <= number <= hi for lo, hi in self.reserved.get(owner, []))
@@ -67,8 +80,10 @@ def parse(lines: Iterable[str]) -> Listing:
         if not line:
             continue
         kind, owner, *rest = line.split(" ")
-        if kind in ("message", "enum"):
+        if kind in ("message", "enum", "service"):
             out.types.add(owner)
+        elif kind in ("rpc", "syntax", "oneof"):
+            out.named[(kind, f"{owner} {rest[0]}" if rest and kind != "syntax" else owner)] = " ".join(rest)
         elif kind in ("field", "value"):
             out.members[(owner, int(rest[0]))] = " ".join([kind, *rest[1:]])
         elif kind == "reserved":
@@ -100,6 +115,14 @@ def breaking_changes(golden_lines: Iterable[str], current_lines: Iterable[str]) 
             out.append(f"{owner} {number} ({desc.split(' ')[1]}) reuses a reserved number")
         if (owner, number) not in old.members and desc.split(" ")[1] in old.reserved_names.get(owner, set()):
             out.append(f"{owner} {number} reuses the reserved name {desc.split(' ')[1]}")
+    for (kind, key), desc in sorted(old.named.items()):
+        now = new.named.get((kind, key))
+        if now is None and kind == "oneof":
+            continue
+        if now is None:
+            out.append(f"{kind} {key} was removed")
+        elif now != desc:
+            out.append(f"{kind} {key} changed: `{desc}` -> `{now}`")
     for owner, ranges in sorted(old.reserved.items()):
         for lo, hi in ranges:
             if owner in new.types and not all(new.is_reserved(owner, n) for n in range(lo, hi + 1)):
