@@ -48,13 +48,15 @@ def commits(repo: str, base: str, head: str) -> list[Commit]:
         if not record:
             continue
         sha, parents, subject, body = record.split("\x00", 3)
-        files = git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", "-m", "--root", sha).split()
+        files = git(
+            repo, "diff-tree", "--no-renames", "--no-commit-id", "--name-only", "-r", "-m", "--root", sha
+        ).split()
         result.append(Commit(sha, subject, body.strip(), tuple(sorted(set(files))), len(parents.split())))
     return result
 
 
 def changed_files(repo: str, base: str, head: str) -> list[str]:
-    return sorted(set(git(repo, "diff", "--name-only", f"{base}..{head}").split()))
+    return sorted(set(git(repo, "diff", "--no-renames", "--name-only", f"{base}..{head}").split()))
 
 
 def show(repo: str, ref: str, path: str) -> str | None:
@@ -62,13 +64,13 @@ def show(repo: str, ref: str, path: str) -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
-def ls_tree(repo: str, ref: str, *paths: str) -> list[str]:
-    return git(repo, "ls-tree", "-r", "--name-only", ref, "--", *paths).split()
 def show_bytes(repo: str, ref: str, path: str) -> bytes | None:
     result = subprocess.run(["git", "-C", repo, "show", f"{ref}:{path}"], capture_output=True)
     return result.stdout if result.returncode == 0 else None
 
 
+def ls_tree(repo: str, ref: str, *paths: str) -> list[str]:
+    return git(repo, "ls-tree", "-r", "--name-only", ref, "--", *paths).split()
 
 
 def dirty_tracked(repo: str) -> list[str]:

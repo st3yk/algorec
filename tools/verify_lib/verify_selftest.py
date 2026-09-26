@@ -273,6 +273,43 @@ def test_skip_names_inside_strings_are_not_skips(repo):
     assert guard(repo, {"tests/test_x.py": head}) == []
 
 
+def test_a_renamed_test_file_keeps_its_protection(repo):
+    head = {"tests/test_x.py": None, "tests/test_y.py": TEST_FILE.replace("    assert seed < 100\n", "")}
+    assert "`test_a` lost or changed a check: `assert seed < 100`" in messages(guard(repo, head))
+
+
+def test_module_wide_skips_and_changed_module_settings_ask_a_human(repo):
+    marked = guard(repo, {"tests/test_x.py": TEST_FILE + "\npytestmark = pytest.mark.skip\n"})
+    assert any("module-wide pytest marks added" in m for m in messages(marked))
+
+
+def test_a_loosened_module_level_tolerance_asks_a_human(tmp_path):
+    r = Repo(str(tmp_path))
+    r.commit("chore: start", {"README.md": "x\n"})
+    base = {"tests/test_x.py": "EPS = 0.03\n" + TEST_FILE, "tests/BUILD.bazel": BUILD}
+    findings = guard(r, {"tests/test_x.py": "EPS = 1.0\n" + TEST_FILE}, base)
+    assert "a module-level test setting was removed or changed: `EPS = 0.03`" in messages(findings)
+
+
+def test_asserts_in_helper_functions_are_protected_too(tmp_path):
+    r = Repo(str(tmp_path))
+    r.commit("chore: start", {"README.md": "x\n"})
+    helper = "\n\ndef brute_force(x):\n    assert x > 0\n    return x\n"
+    base = {"tests/test_x.py": TEST_FILE + helper, "tests/BUILD.bazel": BUILD}
+    findings = guard(r, {"tests/test_x.py": TEST_FILE + helper.replace("    assert x > 0\n", "")}, base)
+    assert "`brute_force` lost or changed a check: `assert x > 0`" in messages(findings)
+
+
+def test_a_skip_through_an_imported_mark_asks_a_human(repo):
+    head = TEST_FILE.replace("def test_b():", "@mark.skip\ndef test_b():")
+    assert any("gained a skip" in m for m in messages(guard(repo, {"tests/test_x.py": head})))
+
+
+def test_deselecting_tests_through_a_rule_attribute_asks_a_human(repo):
+    head = BUILD.replace(")\n", '    env = {"PYTEST_ADDOPTS": "-k not test_a"},\n)\n')
+    assert any("py_test rule changed how it runs" in m for m in messages(guard(repo, {"tests/BUILD.bazel": head})))
+
+
 GOLDEN = "message p.M\nfield p.M 1 a optional TYPE_STRING json=a\n"
 
 
@@ -303,6 +340,7 @@ def test_a_deleted_golden_fails(repo):
         ("BUILD.bazel", False),
         ("steerrec/assembler.py", False),
         ("proto/recommender.fields.golden", False),
+        ("tests/conftest.py", True),
     ],
 )
 def test_guardrail_paths(path, expected):

@@ -111,11 +111,12 @@ empty.
 |---|---|---|
 | `commits` | A subject that isn't `type(scope): summary` (types: feat, fix, test, refactor, build, chore, docs, perf, style, ci, revert), starts with a capital, or is over 72 characters; a WIP or `fixup!` commit; a merge commit; a lock-file change mixed with other files. | |
 | `docs` | A `feat`, `fix`, `perf` or `revert` commit that changes a source in `tools/verify_lib/docs_map.json` (Python modules, `.proto` files, `tools/verify`, `.claude/` and `.github/`; not BUILD files or the golden) without changing its docs page in the same commit. | The same, with a `Docs-Unchanged: <reason>` trailer. The reason goes into the report. |
-| `guardrails` | The contract golden breaks against the base's golden, or was deleted. | A guardrail file changed (`tools/verify*`, `tools/pr_body`, `tools/setup.sh`, `tools/github/`, `tools/verify_lib/`, `tools/conventions/`, `tools/lint/`, `tools/proto_compat/`, `tools/hooks/`, `tools/githooks/`, `tools/agent/`, `ruff.toml`, `mypy.ini`, `pytest.ini`, `.bazelrc`, `.claude/settings.json`, `.github/`, `CODEOWNERS`). A test function removed or renamed; an `assert`, `pytest.raises` or `pytest.approx` removed or changed; a decorator such as `parametrize` removed or changed; a skip or xfail added; a `py_test` rule removed or tagged `manual`; a line removed from the golden. |
+| `guardrails` | The contract golden breaks against the base's golden, or was deleted. | A guardrail file changed (`tools/verify`, `tools/pr_body`, `tools/verify_drill`, `tools/setup.sh`, `tools/github/`, `tools/verify_lib/`, `tools/conventions/`, `tools/lint/`, `tools/proto_compat/`, `tools/hooks/`, `tools/githooks/`, `tools/agent/`, any `conftest.py`, `ruff.toml`, `mypy.ini`, `pytest.ini`, `.bazelrc`, `.claude/settings.json`, `.github/`, `CODEOWNERS`). In test files (everything under `tests/`, `conftest.py`, `test_*.py`, `*_test.py`, `*_selftest.py`): a function removed or renamed (test or helper); an `assert`, `pytest.raises` or `pytest.approx` removed or changed in any function; a decorator such as `parametrize` removed or changed; a skip or xfail added (also through `from pytest import mark`); a module-level assignment removed or changed, such as a tolerance constant; a module-wide `pytestmark` added. In BUILD files: a `py_test` rule removed, tagged `manual`, or changed in how it runs (`env`, `args`, `main`, `srcs`, …). A line removed from the golden. |
 
-Test functions are compared by name across all test files, and asserts by
-their normalized source, so moving a test or reformatting an assert isn't a
-finding. Skips are found in decorators and calls, not in strings. Guardrail
+Functions are compared by name across all test files, and asserts by their
+normalized source, so moving a test or reformatting an assert isn't a
+finding. Renames are compared as a delete plus an add (`--no-renames`), so a
+renamed test file keeps its protection. Skips are found in decorators and calls, not in strings. Guardrail
 file changes are reported once per area (for example `tools/verify_lib/`). `style`, `refactor`, `test`, `build`, `chore`, `docs` and `ci`
 commits claim no behavior change, so `docs` doesn't apply to them; the
 reviewer checks that claim.

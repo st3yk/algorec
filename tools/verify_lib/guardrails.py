@@ -30,9 +30,20 @@ GUARDRAIL_PATTERNS = (
     ".claude/settings.json",
     ".github/*",
     "CODEOWNERS",
+    "*conftest.py",
 )
 GOLDEN = "proto/recommender.fields.golden"
-SKIP_NAMES = ("pytest.mark.skip", "pytest.mark.skipif", "pytest.mark.xfail", "pytest.skip", "pytest.xfail")
+SKIP_NAMES = (
+    "pytest.mark.skip",
+    "pytest.mark.skipif",
+    "pytest.mark.xfail",
+    "pytest.skip",
+    "pytest.xfail",
+    "mark.skip",
+    "mark.skipif",
+    "mark.xfail",
+)
+RULE_ATTRS_IGNORED = ("name", "deps", "size", "visibility")
 
 Reader = Callable[[str], str | None]
 
@@ -43,7 +54,14 @@ def is_guardrail(path: str) -> bool:
 
 def is_test_file(path: str) -> bool:
     name = path.rsplit("/", 1)[-1]
-    return path.endswith(".py") and (name.startswith("test_") or name.endswith(("_test.py", "_selftest.py")))
+    if not path.endswith(".py"):
+        return False
+    return (
+        path.startswith("tests/")
+        or name == "conftest.py"
+        or name.startswith("test_")
+        or name.endswith(("_test.py", "_selftest.py"))
+    )
 
 
 @dataclass
@@ -54,6 +72,14 @@ class TestFn:
     skips: int = 0
 
 
+def _module_assignments(text: str) -> Counter[str]:
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return Counter()
+    return Counter(ast.unparse(node) for node in tree.body if isinstance(node, ast.Assign | ast.AnnAssign))
+
+
 def _test_functions(path: str, text: str) -> dict[str, TestFn]:
     try:
         tree = ast.parse(text)
@@ -61,7 +87,7 @@ def _test_functions(path: str, text: str) -> dict[str, TestFn]:
         return {}
     out = {}
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name.startswith("test"):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             fn = TestFn(path, decorators=[ast.unparse(d) for d in node.decorator_list])
             for inner in ast.walk(node):
                 if isinstance(inner, ast.Assert):
@@ -84,7 +110,7 @@ def _group(path: str) -> str:
     return "/".join(parts[:2]) + "/" if len(parts) > 2 else path
 
 
-def _py_tests(text: str) -> dict[str, bool]:
+def _py_tests(text: str) -> dict[str, dict[str, str]]:
     try:
         tree = ast.parse(text)
     except SyntaxError:
@@ -95,17 +121,16 @@ def _py_tests(text: str) -> dict[str, bool]:
             kwargs = {kw.arg: kw.value for kw in node.keywords if kw.arg}
             name = kwargs.get("name")
             if isinstance(name, ast.Constant) and isinstance(name.value, str):
-                tags = kwargs.get("tags")
-                manual = isinstance(tags, ast.List) and any(
-                    isinstance(t, ast.Constant) and t.value == "manual" for t in tags.elts
-                )
-                out[name.value] = manual
+                out[name.value] = {k: ast.unparse(v) for k, v in kwargs.items() if k not in RULE_ATTRS_IGNORED}
     return out
 
 
-def _collect(paths: list[str], read: Reader) -> tuple[dict[str, list[TestFn]], dict[str, bool]]:
+def _collect(
+    paths: list[str], read: Reader
+) -> tuple[dict[str, list[TestFn]], dict[str, dict[str, str]], dict[str, Counter[str]]]:
     fns: dict[str, list[TestFn]] = {}
-    rules: dict[str, bool] = {}
+    rules: dict[str, dict[str, str]] = {}
+    assigns: dict[str, Counter[str]] = {}
     for path in paths:
         text = read(path)
         if text is None:
@@ -113,11 +138,12 @@ def _collect(paths: list[str], read: Reader) -> tuple[dict[str, list[TestFn]], d
         if is_test_file(path):
             for name, fn in _test_functions(path, text).items():
                 fns.setdefault(name, []).append(fn)
+            assigns[path] = _module_assignments(text)
         elif path.endswith("BUILD.bazel"):
             package = path.rsplit("/", 1)[0] if "/" in path else ""
-            for name, manual in _py_tests(text).items():
-                rules[f"//{package}:{name}"] = manual
-    return fns, rules
+            for name, attrs in _py_tests(text).items():
+                rules[f"//{package}:{name}"] = attrs
+    return fns, rules, assigns
 
 
 def check_guardrails(
@@ -148,8 +174,12 @@ def _check_tests(
     relevant = {p for p in changed if is_test_file(p) or p.endswith("BUILD.bazel")}
     if not relevant:
         return []
-    base_fns, base_rules = _collect([p for p in base_files if is_test_file(p) or p.endswith("BUILD.bazel")], read_base)
-    head_fns, head_rules = _collect([p for p in head_files if is_test_file(p) or p.endswith("BUILD.bazel")], read_head)
+    base_fns, base_rules, base_assigns = _collect(
+        [p for p in base_files if is_test_file(p) or p.endswith("BUILD.bazel")], read_base
+    )
+    head_fns, head_rules, head_assigns = _collect(
+        [p for p in head_files if is_test_file(p) or p.endswith("BUILD.bazel")], read_head
+    )
     out = []
     for name, olds in sorted(base_fns.items()):
         if not any(fn.path in relevant for fn in olds) and name in head_fns:
@@ -171,11 +201,25 @@ def _check_tests(
     for name, news in sorted(head_fns.items()):
         if name not in base_fns and any(fn.skips for fn in news):
             out.append(Finding("guardrails", HUMAN, f"new test `{name}` is skipped or xfailed", news[0].path))
-    for label, manual in sorted(base_rules.items()):
-        if label not in head_rules:
+    for label, attrs in sorted(base_rules.items()):
+        now = head_rules.get(label)
+        if now is None:
             out.append(Finding("guardrails", HUMAN, "py_test rule was removed", label))
-        elif head_rules[label] and not manual:
+            continue
+        if "manual" in now.get("tags", "") and "manual" not in attrs.get("tags", ""):
             out.append(Finding("guardrails", HUMAN, "py_test rule is now tagged manual, so //... skips it", label))
+        changed = sorted(k for k in set(attrs) | set(now) if attrs.get(k) != now.get(k) and k != "tags")
+        if changed:
+            detail = "; ".join(f"{k}: `{attrs.get(k, '')[:60]}` -> `{now.get(k, '')[:60]}`" for k in changed[:3])
+            out.append(Finding("guardrails", HUMAN, f"py_test rule changed how it runs ({detail})", label))
+    base_all = sum(base_assigns.values(), Counter())
+    head_all = sum(head_assigns.values(), Counter())
+    for text in sorted((base_all - head_all).elements())[:5]:
+        out.append(Finding("guardrails", HUMAN, f"a module-level test setting was removed or changed: `{text[:100]}`"))
+    for path, found in sorted(head_assigns.items()):
+        for text in found:
+            if text.startswith("pytestmark") and text not in base_all:
+                out.append(Finding("guardrails", HUMAN, f"module-wide pytest marks added: `{text[:100]}`", path))
     return out
 
 
