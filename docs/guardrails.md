@@ -161,11 +161,15 @@ push to `master`, and on demand. It adds no checks of its own.
 2. It extracts `tools/verify_lib/` from the merge-base **itself**, in YAML,
    and runs that copy, so a PR that edits `tools/verify` can't change the
    judge. The base is the PR's base branch, the previous `master` commit on a
-   push, and the default branch on a manual run.
+   push, and the default branch on a manual run. When the merge-base has no
+   `tools/verify_lib/` (the PR that introduces the judge), there is no trusted
+   judge, so the job **skips** with a notice instead of letting the branch
+   judge itself: that PR is reviewed by hand, and every later PR is judged by
+   the merged copy.
 3. The Markdown report goes into the job summary, and the JSON and Markdown
    reports are uploaded as the `verify-report` artifact.
-4. The check is green only on `PASS`. `FAIL`, `NEEDS_HUMAN` and `ERROR` are
-   red; the error annotation says which.
+4. The check is green on `PASS`, and on the bootstrap skip above. `FAIL`,
+   `NEEDS_HUMAN` and `ERROR` are red; the error annotation says which.
 
 It has read-only permissions and uses no secrets, so pull requests from forks
 are safe to run. Third-party actions are pinned by commit SHA.

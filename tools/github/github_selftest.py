@@ -42,9 +42,14 @@ def test_the_workflow_is_read_only_and_names_the_required_check():
     assert re.search(r"^  verify:\n", text, re.M)
 
 
-@pytest.mark.parametrize("forbidden", ["HEAD~1", "--judge", "secrets."])
+@pytest.mark.parametrize("forbidden", ["HEAD~1", "--judge", "secrets.", "tools/verify --base"])
 def test_the_workflow_never_judges_against_its_own_history_or_uses_secrets(forbidden):
     assert forbidden not in read(WORKFLOW)
+
+
+def test_a_base_without_a_judge_is_skipped_not_judged_by_the_branch():
+    text = read(WORKFLOW)
+    assert 'echo "code=skip"' in text and "skip) echo" in text
 
 
 def test_the_workflow_extracts_the_judge_from_the_merge_base():

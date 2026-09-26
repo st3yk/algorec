@@ -64,7 +64,13 @@ jobs:
             PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$judge" python3 -m tools.verify_lib.verify \
               --repo "$GITHUB_WORKSPACE" --base "$BASE"
           else
-            tools/verify --base "$BASE"
+            echo "code=skip" >> "$GITHUB_OUTPUT"
+            {
+              echo "**\`tools/verify\`: skipped.** The merge-base \`${mb:0:12}\` has no \`tools/verify_lib/\`,"
+              echo "so this change introduces the judge and there is no trusted judge to run it with."
+              echo "Review it by hand; every later PR is judged by the merged copy."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
           code=$?
           echo "code=$code" >> "$GITHUB_OUTPUT"
@@ -86,6 +92,7 @@ jobs:
         run: |
           case "$CODE" in
             0) echo "PASS" ;;
+            skip) echo "::notice::tools/verify skipped: the base has no judge yet (this change introduces it)." ;;
             1) echo "::error::tools/verify: FAIL"; exit 1 ;;
             2) echo "::error::tools/verify: NEEDS_HUMAN. A human must review the findings in the job summary."; exit 2 ;;
             *) echo "::error::tools/verify: ERROR (exit $CODE)"; exit 3 ;;
