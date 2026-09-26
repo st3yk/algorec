@@ -94,7 +94,7 @@ imports.
   - Only stage 0 uses a zero MIP gap.
   - The budget includes model building and is shared across stages.
   - `time_limit_s` must be finite and ≥ 0.
-  - A 300-item pool is solved to optimality given a generous 60 s budget. This
+  - A 300-item pool is solved to optimality given a generous 30 s budget. This
     is a regression test: at 50 ms per stage, the page's mean p was 0.75
     instead of 0.85.
   - The 2 s default budget is enough for the same pool. This is the `timing`

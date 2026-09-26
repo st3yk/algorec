@@ -348,7 +348,7 @@ def test_a_300_item_pool_is_solved_to_optimality_given_enough_time():
     from steerrec.synthetic import make_catalog
 
     cat = make_catalog(300, seed=0)
-    page = assemble(cat.items, single_slider(0.5), DEFAULT_REGISTRY, P, time_limit_s=60.0)
+    page = assemble(cat.items, single_slider(0.5), DEFAULT_REGISTRY, P, time_limit_s=30.0)
     assert not page.hit_time_limit and not page.used_fallback
     assert sum(it.p for it in page.items) / P > 0.84
 
