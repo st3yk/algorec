@@ -184,7 +184,7 @@ differs from the table. Run it after every guardrail change.
 | Shortfall silently dropped | bounds tests | FAIL |
 | Hand-edited lock-file hash | `//:requirements.test` | FAIL |
 | One assertion deleted from a test | `guardrails` | NEEDS_HUMAN |
-| Commit checker loosened on the branch, subject `update stuff` | commit-msg hook, then the base's judge | FAIL |
+| Commit checker loosened on the branch, subject `update stuff` | the base's judge (the branch's own commit-msg hook runs the loosened code) | FAIL |
 | Commit subject `update stuff` | commit-msg hook | FAIL |
 | CI workflow edited | `guardrails` | NEEDS_HUMAN |
 | New package that no check sees | `coverage` | FAIL |

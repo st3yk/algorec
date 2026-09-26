@@ -195,7 +195,6 @@ FAULTS = [
         ),
         "update stuff",
         "FAIL",
-        "commit_msg",
     ),
     Fault("non-conventional commit subject", touch_doc("docs/concepts.md"), "update stuff", "FAIL", "commit_msg"),
     Fault(
