@@ -241,6 +241,8 @@ differs from the table. Run it after every guardrail change.
 | Tests disabled by an early `SystemExit(0)` above the footer | `evidence` (and `guardrails`) | FAIL |
 | Tests skipped through an alias (`_off = pytest.mark.skip`) | `evidence` (and `guardrails`) | FAIL |
 | A `tools/bazel` wrapper that fakes a passing test run, plus the neutral-rows fault | pinned Bazel ignores the wrapper; property tests | FAIL |
+| The three neutral tests rebound to lambdas (`globals()[...] = lambda: None`), plus the neutral-rows fault | `evidence` (the result isn't from the `def`) and `guardrails` | FAIL |
+| An assert hidden under `if False:` | `guardrails` (the test's body changed) | NEEDS_HUMAN |
 
 Hook rows pass only with the hook's exact rejection code (exit 2 for
 PostToolUse, exit 1 for commit-msg). Not in the drill: agent permission

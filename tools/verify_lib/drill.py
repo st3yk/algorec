@@ -224,6 +224,39 @@ FAULTS = [
         "NEEDS_HUMAN",
     ),
     Fault(
+        "neutral tests rebound to lambdas, plus the neutral-rows fault",
+        both(
+            NEUTRAL_ROWS_REMOVED,
+            replace(
+                "tests/test_assembler.py",
+                "\n\n" + TEST_FOOTER,
+                "\n\n"
+                + "".join(
+                    f'globals()["{name}"] = lambda *a, **k: None\n'
+                    for name in (
+                        "test_shortfall_page_is_never_below_neutral_minimal_case",
+                        "test_every_page_stays_on_the_slider_side_of_neutral",
+                        "test_ilp_matches_brute_force_on_small_pools",
+                    )
+                )
+                + "\n\n"
+                + TEST_FOOTER,
+            ),
+        ),
+        "fix(assembler): drop the neutral rows",
+        "FAIL",
+    ),
+    Fault(
+        "an assert hidden under if False",
+        replace(
+            "tests/test_targets.py",
+            "    assert exclusive_mass(it, EDUCATIONAL, pushed_up=(EDUCATIONAL,)) == pytest.approx(0.7)\n",
+            "    if False:\n        assert exclusive_mass(it, EDUCATIONAL, pushed_up=(EDUCATIONAL,)) == pytest.approx(0.7)\n",
+        ),
+        "test(targets): park a check",
+        "NEEDS_HUMAN",
+    ),
+    Fault(
         "commit checker loosened on the branch",
         replace(
             "tools/verify_lib/commits.py",
