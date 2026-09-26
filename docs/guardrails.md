@@ -126,6 +126,15 @@ are safe to run. Third-party actions are pinned by commit SHA. A PR runs the
 workflow file from its own branch; that is acceptable while only the owner
 merges. If outside contributors arrive, move to `pull_request_target`.
 
+### Protecting `master`
+
+`tools/github/apply_ruleset.sh` prints the ruleset in
+`tools/github/ruleset.json`; with `--apply` it creates or updates it on the
+repository. The ruleset requires a pull request and a green `verify` check
+(on an up-to-date branch), blocks force-pushes and deletion, and requires
+linear history. Only the repository admin can bypass it, which is how a
+NEEDS_HUMAN change is merged on purpose. Agents are never given `gh pr merge`.
+
 ## Around the agent: hooks and git hooks
 
 These give fast feedback. None of them decides the verdict; `tools/verify` does.
