@@ -133,6 +133,8 @@ def test_the_docs_map_covers_every_steerrec_module():
     for module in ("items", "registry", "targets", "assembler", "synthetic", "demo"):
         assert docs_for(f"steerrec/{module}.py", mapping), module
     assert docs_for("proto/steerrec/v1/recommender.proto", mapping) == ["docs/service-contract.md"]
+    assert docs_for("proto/BUILD.bazel", mapping) == []
+    assert docs_for("proto/recommender.fields.golden", mapping) == []
     assert docs_for("tools/verify_lib/verify.py", mapping) == ["docs/guardrails.md"]
     assert docs_for("tools/verify", mapping) == ["docs/guardrails.md"]
     assert docs_for("tools/lint/BUILD.bazel", mapping) == []
@@ -258,12 +260,16 @@ def test_removing_a_py_test_rule_asks_a_human(tmp_path):
     assert "py_test rule was removed" in messages(guard(r, {"tests/BUILD.bazel": "\n"}))
 
 
-def test_editing_a_guardrail_file_asks_a_human(repo):
-    findings = guard(repo, {"tools/verify_lib/commits.py": "TYPES = ()\n", "ruff.toml": "x\n"})
-    assert sorted((f.where, f.level) for f in findings) == [
-        ("ruff.toml", HUMAN),
-        ("tools/verify_lib/commits.py", HUMAN),
-    ]
+def test_editing_a_guardrail_file_asks_a_human_once_per_area(repo):
+    files = {"tools/verify_lib/commits.py": "TYPES = ()\n", "tools/verify_lib/x.py": "\n", "ruff.toml": "x\n"}
+    findings = guard(repo, files)
+    assert sorted((f.where, f.level) for f in findings) == [("ruff.toml", HUMAN), ("tools/verify_lib/", HUMAN)]
+    assert "commits.py, x.py" in [f.message for f in findings if f.where == "tools/verify_lib/"][0]
+
+
+def test_skip_names_inside_strings_are_not_skips(repo):
+    head = TEST_FILE + '\n\ndef test_text():\n    assert "pytest.mark.skip" in "@pytest.mark.skip pytest.skip("\n'
+    assert guard(repo, {"tests/test_x.py": head}) == []
 
 
 GOLDEN = "message p.M\nfield p.M 1 a optional TYPE_STRING json=a\n"

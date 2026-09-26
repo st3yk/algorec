@@ -29,7 +29,7 @@ GUARDRAIL_PATTERNS = (
     "CODEOWNERS",
 )
 GOLDEN = "proto/recommender.fields.golden"
-SKIP_MARKERS = ("pytest.mark.skip", "pytest.mark.skipif", "pytest.mark.xfail", "pytest.skip(", "pytest.xfail(")
+SKIP_NAMES = ("pytest.mark.skip", "pytest.mark.skipif", "pytest.mark.xfail", "pytest.skip", "pytest.xfail")
 
 Reader = Callable[[str], str | None]
 
@@ -65,10 +65,20 @@ def _test_functions(path: str, text: str) -> dict[str, TestFn]:
                     fn.asserts[ast.unparse(inner)] += 1
                 elif isinstance(inner, ast.Call) and ast.unparse(inner.func) in ("pytest.raises", "pytest.approx"):
                     fn.asserts[ast.unparse(inner)] += 1
-            source = ast.unparse(node)
-            fn.skips = sum(source.count(m) for m in SKIP_MARKERS)
+            fn.skips = sum(1 for d in node.decorator_list if _is_skip(d))
+            fn.skips += sum(1 for inner in ast.walk(node) if isinstance(inner, ast.Call) and _is_skip(inner.func))
             out[node.name] = fn
     return out
+
+
+def _is_skip(node: ast.expr) -> bool:
+    target = node.func if isinstance(node, ast.Call) else node
+    return ast.unparse(target) in SKIP_NAMES
+
+
+def _group(path: str) -> str:
+    parts = path.split("/")
+    return "/".join(parts[:2]) + "/" if len(parts) > 2 else path
 
 
 def _py_tests(text: str) -> dict[str, bool]:
@@ -110,7 +120,20 @@ def _collect(paths: list[str], read: Reader) -> tuple[dict[str, list[TestFn]], d
 def check_guardrails(
     changed: list[str], base_files: list[str], head_files: list[str], read_base: Reader, read_head: Reader
 ) -> list[Finding]:
-    out = [Finding("guardrails", HUMAN, "guardrail file changed", path) for path in changed if is_guardrail(path)]
+    groups: dict[str, list[str]] = {}
+    for path in changed:
+        if is_guardrail(path):
+            groups.setdefault(_group(path), []).append(path)
+    out = [
+        Finding(
+            "guardrails",
+            HUMAN,
+            f"guardrail change: {', '.join(p.rsplit('/', 1)[-1] for p in paths[:6])}"
+            + (f" and {len(paths) - 6} more" if len(paths) > 6 else ""),
+            group,
+        )
+        for group, paths in sorted(groups.items())
+    ]
     out += _check_tests(changed, base_files, head_files, read_base, read_head)
     out += _check_golden(read_base(GOLDEN), read_head(GOLDEN))
     return out

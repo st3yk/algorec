@@ -6,7 +6,7 @@
   "steerrec/assembler.py": ["docs/code/assembler.md"],
   "steerrec/synthetic.py": ["docs/code/synthetic-and-demo.md"],
   "steerrec/demo.py": ["docs/code/synthetic-and-demo.md"],
-  "proto/**": ["docs/service-contract.md"],
+  "proto/**.proto": ["docs/service-contract.md"],
   "tests/**.py": ["docs/testing.md"],
   "tools/verify": ["docs/guardrails.md"],
   "tools/**.py": ["docs/guardrails.md"],
