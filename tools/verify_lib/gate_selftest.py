@@ -266,5 +266,25 @@ def test_a_new_skip_asks_a_human_and_a_skip_from_the_base_is_accepted(gate):
     assert code == 0, json.dumps(report)
 
 
+def test_post_merge_skips_review_time_checks_but_still_judges_the_tree(gate):
+    gate.write("tools/verify_lib/extra.py", "X = 1\n")
+    gate.commit("Merge pull request #9 from someone/branch")
+    assert gate.verify("--base", "master")[0] != 0
+    code, report = gate.verify("--base", "master", "--post-merge")
+    assert code == 0, json.dumps(report)
+    skipped = {c["name"] for c in report["checks"] if c["status"] == "skip"}
+    assert {"commits", "docs", "guardrails"} <= skipped
+
+
+def test_post_merge_still_fails_a_failing_test(gate):
+    gate.write("tests/test_x.py", TEST_FILE)
+    gate.commit("test: add tests")
+    with open(gate.xml, "w") as f:
+        f.write(junit(case("test_one")))
+    gate.env["FAKE_TEST_XML"] = gate.xml
+    code, report = gate.verify("--base", "master", "--post-merge")
+    assert code == 1 and "`test_two` never ran" in json.dumps(report)
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

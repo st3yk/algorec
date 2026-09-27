@@ -11,6 +11,7 @@ tools/verify --fast            # inner loop: the working tree, fast tests, cover
 tools/verify                   # the gate: a clean checkout of HEAD, judged by the base's checks
 tools/verify --deep            # the gate, plus 5 fresh runs of every test the branch affects
 tools/verify --base origin/x   # judge against another base (default: origin/master, then master)
+tools/verify --post-merge      # after a merge: build, tests, evidence, coverage, demo only
 tools/verify --json            # print the JSON report instead of text
 ```
 
@@ -192,23 +193,40 @@ jobs, so that PR code never runs next to a write token:
    `ERROR`.
 2. **`enforce`** (`pull-requests: write`, `issues: write`) never checks out or
    runs the PR's code. It reads the verdict and kind from job 1 and:
-   - `PASS`: removes the `needs-human` label;
+   - `PASS`: removes the `needs-human` and `not-ready` labels;
    - soft `NEEDS_HUMAN`: adds the `needs-human` label, and the PR stays ready
      for a human to review;
-   - hard `NEEDS_HUMAN`, `FAIL`, `ERROR`, or no verdict: turns the PR back
-     into a draft and comments with a link to the run.
+   - hard `NEEDS_HUMAN`, `FAIL`, `ERROR`, or no verdict: adds the `not-ready`
+     label and comments with a link to the run.
 
-So a PR on GitHub is only ever "ready" when the judge says so, however it was
-opened.
+   Any failing API call fails the job, so the labels never claim more than
+   happened. It labels instead of turning the PR back into a draft, because
+   GitHub doesn't let the Actions job token run `convertPullRequestToDraft`
+   ("Resource not accessible by integration"). What blocks merging is the
+   required `verify` check, which stays red until the judge says `PASS`.
+
+So an unready PR on GitHub is always marked `not-ready`, however it was
+opened, and can't merge without an admin bypass.
 
 When the merge-base has no `tools/verify_lib/` (the PR that introduces the
 judge), there is no trusted judge, so `verify` **skips** with a notice
 instead of letting the branch judge itself. That PR is reviewed by hand, and
 every later PR is judged by the merged copy.
 
-**`.github/workflows/verify.yml`** runs the same judge on every push to
-`master` (against the previous `master` commit) and on demand (against the
-default branch). It doesn't run on pull requests.
+**`.github/workflows/verify.yml`** runs the same judge, with `--post-merge`, on
+every push to `master`, against the previous `master` commit. `--post-merge`
+skips the review-time checks (`commits`, `docs`, `guardrails`,
+`base-guardrails`), which judged the PR before it merged: a merge commit or a
+merged guardrail change would otherwise turn `master` red forever. It keeps
+build, test, evidence, coverage and demo, and it accepts every skip that's in
+the merged tree. Its job is named `verify-master` and it has no manual trigger,
+so it can never satisfy the required `verify` check that only the gatekeeper
+provides.
+
+Both workflows run the extracted judge **from its own directory**
+(`cd "$judge" && python3 -m tools.verify_lib.verify ...`). `python -m` puts the
+current directory ahead of `PYTHONPATH`, so running it from the checkout would
+import the checkout's `tools/verify_lib/` instead: the PR would judge itself.
 
 Both use read-only access to the code, no secrets, and third-party actions
 pinned by commit SHA.
@@ -221,7 +239,8 @@ repository. The ruleset requires a pull request and a green `verify` check
 (on an up-to-date branch), blocks force-pushes and deletion, and requires
 linear history. The required check must come from GitHub Actions
 (`integration_id` 15368), so a commit status posted through the API doesn't
-count. The repository admin can bypass the ruleset **only through a pull
+count. PRs can only be merged with a merge commit (`allowed_merge_methods:
+["merge"]`), so a PR's separate commits survive on `master`. The repository admin can bypass the ruleset **only through a pull
 request** (`bypass_mode: pull_request`): that is how a NEEDS_HUMAN change is
 merged on purpose, and it means even the admin's credentials can't push to
 `master` directly. Agents are never given `gh pr merge`.

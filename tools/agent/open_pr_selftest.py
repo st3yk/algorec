@@ -136,6 +136,7 @@ def test_an_existing_pr_is_updated_and_marked_ready(repo):
     assert result.returncode == 0 and "updated PR #7" in result.stdout
     calls = repo.gh_calls()
     assert "pr edit 7 --body-file" in " ".join(calls) and any(c.startswith("pr ready 7") for c in calls)
+    assert "pr edit 7 --remove-label not-ready" in calls
     assert not any(c.startswith("pr create") for c in calls)
 
 

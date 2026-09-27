@@ -86,6 +86,7 @@ else
   else
     gh pr edit "$number" --remove-label needs-human >/dev/null 2>&1 || true
   fi
+  gh pr edit "$number" --remove-label not-ready >/dev/null 2>&1 || true
   gh pr ready "$number" >/dev/null 2>&1 || true
   echo "updated PR #$number"
 fi
